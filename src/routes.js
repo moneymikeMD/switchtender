@@ -145,6 +145,11 @@ export function buildOptions({ driveThrough, driveToParkAndRide, transit }, park
       totalSeconds: parseDuration(driveThrough.duration),
       distanceMeters: driveThrough.distanceMeters ?? null,
       congestion: summariseCongestion(driveThrough),
+      // Decoded geometry of the onward drive, for feeds that match incidents
+      // to the route spatially (CMB-16). Null when the API sent no polyline.
+      points: driveThrough.polyline?.encodedPolyline
+        ? decodePolyline(driveThrough.polyline.encodedPolyline)
+        : null,
     },
     parkAndRide: {
       totalSeconds: driveSeconds + bufferSeconds + transitSeconds,

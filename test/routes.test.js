@@ -187,3 +187,14 @@ test('an empty route list is an error, not an undefined duration', async () => {
   };
   await assert.rejects(() => computeOptions(config, 'k', stub), RouteError);
 });
+
+test('the drive-through option carries its decoded polyline for spatial feeds, or null without one', () => {
+  const options = buildOptions(fixture, 5);
+  assert.ok(Array.isArray(options.driveThrough.points));
+  assert.ok(options.driveThrough.points.length > 2);
+  assert.equal(options.driveThrough.points[0].length, 2);
+
+  const bare = structuredClone(fixture);
+  delete bare.driveThrough.polyline;
+  assert.equal(buildOptions(bare, 5).driveThrough.points, null);
+});
