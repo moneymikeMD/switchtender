@@ -1,0 +1,19 @@
+{
+  "name": "switchtender",
+  "version": "0.1.0",
+  "description": "Decides drive-through versus park-and-ride at a configurable fork in a commute",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "smol-toml": "^1.8.0"
+  }
+}
