@@ -1,0 +1,43 @@
+{
+  "driveThrough": {
+    "duration": "2700s",
+    "distanceMeters": 8500,
+    "polyline": {
+      "encodedPolyline": "_gxaG~fqqLyA?yA?yA?yA?yA?yA?yA?yA?yA?yA?irB?ooB?ooB?ooB?"
+    },
+    "travelAdvisory": {
+      "speedReadingIntervals": [
+        {
+          "startPolylinePointIndex": 0,
+          "endPolylinePointIndex": 10,
+          "speed": "TRAFFIC_JAM"
+        },
+        {
+          "startPolylinePointIndex": 10,
+          "endPolylinePointIndex": 14,
+          "speed": "NORMAL"
+        }
+      ]
+    }
+  },
+  "driveToParkAndRide": {
+    "duration": "600s",
+    "distanceMeters": 5000,
+    "polyline": {
+      "encodedPolyline": "_gxaG~fqqLyA?yA?yA?yA?yA?yA?yA?yA?yA?yA?irB?ooB?ooB?ooB?"
+    },
+    "travelAdvisory": {
+      "speedReadingIntervals": [
+        {
+          "startPolylinePointIndex": 0,
+          "endPolylinePointIndex": 14,
+          "speed": "NORMAL"
+        }
+      ]
+    }
+  },
+  "transit": {
+    "duration": "1500s",
+    "distanceMeters": 14000
+  }
+}

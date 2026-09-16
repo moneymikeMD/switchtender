@@ -1,15 +1,27 @@
 // Entry point.
 //
-// Right now this loads configuration, reports what it found, and exits. Route
-// computation, the verdict and the spoken output are later tickets. The point
-// of shipping it in this state is that a misconfigured install fails here,
-// loudly, rather than three components deeper with a confusing message.
+// Loads configuration, then computes the two onward options from the fork and
+// prints them. Turning those numbers into a verdict, and saying it out loud,
+// are later tickets; this prints the inputs a verdict would consume.
 
 import { loadConfig, ConfigError } from './config.js';
+import { computeOptions, RouteError } from './routes.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
-function main() {
+const minutes = (seconds) => `${Math.round(seconds / 60)} min`;
+
+function describeCongestion(congestion) {
+  if (congestion.unknown) return 'congestion unknown';
+  const jammedKm = congestion.metres.TRAFFIC_JAM / 1000;
+  const slowKm = congestion.metres.SLOW / 1000;
+  const parts = [`score ${congestion.score.toFixed(2)}`];
+  if (jammedKm > 0.05) parts.push(`${jammedKm.toFixed(1)} km jammed`);
+  if (slowKm > 0.05) parts.push(`${slowKm.toFixed(1)} km slow`);
+  return parts.join(', ');
+}
+
+async function main() {
   let config;
   try {
     config = loadConfig(CONFIG_PATH);
@@ -42,7 +54,32 @@ function main() {
     );
   }
 
-  console.log('No verdict yet: route computation is not implemented.');
+  let options;
+  try {
+    options = await computeOptions(config, secrets.keys.ROUTES_API_KEY);
+  } catch (error) {
+    if (error instanceof RouteError) {
+      // Routing is the required signal, so this is fatal rather than degrading.
+      // Saying nothing is the correct output when the numbers cannot be had.
+      console.error(`\n${error.message}`);
+      console.error('No verdict: the onward options could not be computed.');
+      process.exit(1);
+    }
+    throw error;
+  }
+
+  const { driveThrough, parkAndRide } = options;
+  console.log(`\nFrom ${route.decision_point.label}:`);
+  console.log(
+    `  keep driving   ${minutes(driveThrough.totalSeconds).padEnd(8)} ${describeCongestion(driveThrough.congestion)}`,
+  );
+  console.log(
+    `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
+  );
+  console.log('\nNo verdict yet: the decision rule is not implemented.');
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
