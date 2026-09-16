@@ -8,7 +8,7 @@ switchtender decides, at a fork in a commute, whether to keep driving or park
 and take transit, and says the verdict out loud. The fork is configurable. Both
 options share the leg before the fork, so only the legs after it are measured.
 
-Node 20, ESM, one runtime dependency (`smol-toml`). Tests use `node:test`.
+Node 24 (current LTS), ESM, one runtime dependency (`smol-toml`). Tests use `node:test`.
 
 ```
 npm ci
