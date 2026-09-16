@@ -1,0 +1,249 @@
+{
+  "objectIdFieldName": "OBJECTID",
+  "globalIdFieldName": "GlobalID",
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": {
+    "wkid": 102100,
+    "latestWkid": 3857
+  },
+  "fields": [
+    {
+      "name": "WorkLocationFullAddress",
+      "alias": "WorkLocationFullAddress",
+      "type": "esriFieldTypeString",
+      "length": 100
+    },
+    {
+      "name": "StatusDescription",
+      "alias": "StatusDescription",
+      "type": "esriFieldTypeString",
+      "length": 50
+    },
+    {
+      "name": "EffectiveDate",
+      "alias": "EffectiveDate",
+      "type": "esriFieldTypeDate",
+      "length": 8
+    },
+    {
+      "name": "ExpirationDate",
+      "alias": "ExpirationDate",
+      "type": "esriFieldTypeDate",
+      "length": 8
+    },
+    {
+      "name": "IsRoadClosed",
+      "alias": "IsRoadClosed",
+      "type": "esriFieldTypeString",
+      "length": 1
+    },
+    {
+      "name": "EventTypeDescription",
+      "alias": "EventTypeDescription",
+      "type": "esriFieldTypeString",
+      "length": 100
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1300 MAINE AVENUE SW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1786608000000,
+        "ExpirationDate": 1800867600000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Construction Staging Area"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "900 - 999 BLOCK OF PERRY PLACE NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787299200000,
+        "ExpirationDate": 1791619200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1 - 99 BLOCK OF FARRAGUT PLACE NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788768000000,
+        "ExpirationDate": 1793869200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "100 - 124 BLOCK OF LONGFELLOW STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788768000000,
+        "ExpirationDate": 1793869200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "200 - 299 BLOCK OF 14TH PLACE NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787558400000,
+        "ExpirationDate": 1791878400000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "4100 - 4199 BLOCK OF HARRISON STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787904000000,
+        "ExpirationDate": 1792224000000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1326 - 1354 BLOCK OF DOWNING STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787385600000,
+        "ExpirationDate": 1791705600000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "100 - 199 BLOCK OF TAUSSIG PLACE NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1786348800000,
+        "ExpirationDate": 1790409600000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1200 - 1299 BLOCK OF GERANIUM STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787212800000,
+        "ExpirationDate": 1790755200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1700 - 1799 BLOCK OF WEBSTER STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788508800000,
+        "ExpirationDate": 1791100800000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1700 - 1799 BLOCK OF UPSHUR STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788508800000,
+        "ExpirationDate": 1790928000000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1400 - 1499 BLOCK OF PERRY PLACE NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788508800000,
+        "ExpirationDate": 1790755200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1500 - 1523 BLOCK OF OAK STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787299200000,
+        "ExpirationDate": 1791705600000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1500 - 1599 BLOCK OF CORCORAN STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787299200000,
+        "ExpirationDate": 1792396800000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1900 - 1937 BLOCK OF CAPITOL AVENUE NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1786435200000,
+        "ExpirationDate": 1790755200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "2700 - 2999 BLOCK OF 8TH STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1787990400000,
+        "ExpirationDate": 1790755200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Construction Staging Area"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "4400 - 4499 BLOCK OF 6TH PLACE NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1788768000000,
+        "ExpirationDate": 1793869200000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "5000 - 5099 BLOCK OF 4TH STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1789372800000,
+        "ExpirationDate": 1791878400000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "300 - 399 BLOCK OF A STREET SE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1789459200000,
+        "ExpirationDate": 1793782800000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Lead Free DC"
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "ROCHAMBEAU BRIDGE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1783324800000,
+        "ExpirationDate": 1798794000000,
+        "IsRoadClosed": "Y",
+        "EventTypeDescription": "Construction Staging Area"
+      }
+    }
+  ]
+}
