@@ -59,6 +59,28 @@ function place(raw, name) {
   return { lat, lon, label: must(raw, `route.${name}.label`, 'string') };
 }
 
+// The verdict log (CMB-11). Optional as a block: a config without [log]
+// simply does not log. Enabled, it needs somewhere to write to.
+function logBlock(raw) {
+  const block = raw.log ?? {};
+  if (typeof block !== 'object') {
+    throw new ConfigError('config: [log] should be a table');
+  }
+  const enabled = block.enabled ?? false;
+  if (typeof enabled !== 'boolean') {
+    throw new ConfigError(`config: key "log.enabled" should be boolean, got ${typeof enabled}`);
+  }
+  const sheet_tab = block.sheet_tab ?? 'verdicts';
+  if (typeof sheet_tab !== 'string') {
+    throw new ConfigError(`config: key "log.sheet_tab" should be string, got ${typeof sheet_tab}`);
+  }
+  const sheet_id = enabled ? must(raw, 'log.sheet_id', 'string') : block.sheet_id ?? null;
+  if (sheet_id !== null && typeof sheet_id !== 'string') {
+    throw new ConfigError(`config: key "log.sheet_id" should be string, got ${typeof sheet_id}`);
+  }
+  return { enabled, sheet_id, sheet_tab };
+}
+
 /** Parse and validate TOML text. Separated from file reading so it is testable. */
 export function parseConfig(text) {
   let raw;
@@ -99,6 +121,7 @@ export function parseConfig(text) {
 
   return {
     route,
+    log: logBlock(raw),
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
     decision: {
       transit_wins_ties: must(raw, 'decision.transit_wins_ties', 'boolean'),

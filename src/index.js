@@ -9,6 +9,7 @@ import { loadConfig, ConfigError } from './config.js';
 import { computeOptions, RouteError } from './routes.js';
 import { decide, speak } from './verdict.js';
 import { fetchIncidents } from './incidents.js';
+import { logVerdict } from './log.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
@@ -99,6 +100,19 @@ async function main() {
     console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);
   }
   console.log(`\n${speak(verdict)}`);
+
+  // CMB-11. Logging never blocks the verdict, so it runs after the spoken
+  // line and reports in one line. The sheet id is an address, not a secret,
+  // but it is still not echoed in full.
+  if (config.log.enabled) {
+    const logged = await logVerdict({ now: new Date(), config, options, incidents, verdict });
+    const tail = config.log.sheet_id.slice(-4);
+    console.log(
+      logged.ok
+        ? `logged to sheet ...${tail} tab ${config.log.sheet_tab}`
+        : `log failed: ${logged.error}`,
+    );
+  }
 }
 
 main().catch((error) => {
