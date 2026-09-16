@@ -142,7 +142,7 @@ export function decide(options, decision, context = {}) {
     transitMinutes: Math.round(transitMinutes),
     marginMinutes: round1(marginMinutes),
     requiredMarginMinutes: round1(requiredMarginMinutes),
-    congestionScore: congestionUnknown ? null : round1(congestionScore * 100) / 100,
+    congestionScore: congestionUnknown ? null : Math.round(congestionScore * 100) / 100,
     confidence,
     reasons,
   };
