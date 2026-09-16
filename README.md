@@ -16,6 +16,21 @@ Every location, venue and bounding box is configuration. The engine holds no
 coordinates, so it runs against any commute with a comparable fork, not just
 the one it was written for.
 
+## Configuration
+
+```
+cp config.example.toml config.toml
+```
+
+Then edit it. `config.toml` is gitignored; `config.example.toml` is the
+committed template and describes a real Boston commute rather than a redacted
+version of anyone's actual route, so it can be read and run as-is.
+
+Full key reference, including why venues are an allowlist rather than a radius
+search: [docs/configuration.md](docs/configuration.md).
+
+API keys come from the environment, never from a config file.
+
 ## License
 
 MIT.

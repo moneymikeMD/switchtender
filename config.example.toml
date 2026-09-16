@@ -1,0 +1,105 @@
+# switchtender example configuration
+#
+# Copy to config.toml and edit. config.toml is gitignored and never committed.
+#
+# Every location the engine uses lives here. The engine itself holds no
+# coordinates, which is what lets this run against any commute with the same
+# shape rather than only the one it was written for.
+#
+# The example below is a real, runnable Boston commute, deliberately unrelated
+# to any maintainer's actual route. It is not a redacted version of anything,
+# so nothing here needs to be treated as sensitive, and a reader can run the
+# tool against it immediately to see the shape of a verdict.
+#
+# The shape this tool assumes: two ways to reach one destination that share a
+# common first leg and diverge at a single point. Drive the whole way, or stop
+# at a park-and-ride and take transit the rest. Because the first leg is common
+# to both, it cancels out, and only the divergent legs decide the answer.
+
+[route]
+timezone = "America/New_York"
+
+# Where the commute starts. Used to compute the approach, not the verdict.
+[route.origin]
+lat = 42.4604
+lon = -71.3489
+label = "Concord town center"
+
+# The fork. Past this point the two options are no longer interchangeable,
+# so the verdict has to be delivered before it, never at it.
+[route.decision_point]
+lat = 42.4004
+lon = -71.2200
+label = "Route 2 at I-95"
+
+# Where the driver would leave the car to take transit.
+[route.park_and_ride]
+lat = 42.3954
+lon = -71.1425
+label = "Alewife station garage"
+# Minutes from parking the car to standing on the platform. Walking, stairs,
+# fare gates, and the garage queue at rush hour. Measure it; do not guess.
+park_to_platform_minutes = 5
+
+# Where the commute ends.
+[route.destination]
+lat = 42.3550
+lon = -71.0656
+label = "Boston Common"
+
+[trigger]
+# How far ahead of the decision point to deliver the verdict. Far enough to
+# act on, close enough that conditions have not changed. Verify this in the
+# car at real speed before trusting it.
+lead_miles = 4.0
+
+[decision]
+# Transit wins ties. A tie means the model cannot tell them apart, and the
+# train is the option whose duration does not degrade while you sit in it.
+transit_wins_ties = true
+
+# Driving must beat transit by at least this many minutes to be recommended.
+# This is a floor, not the whole rule: the required margin scales up with the
+# congestion signal, because a drive estimate taken during heavy congestion
+# is less trustworthy than the same estimate taken on an empty road.
+minimum_drive_margin_minutes = 5
+
+# Assumed departure for the return leg, used only when something about the
+# evening is already known, such as a scheduled event or planned track work.
+# A morning forecast cannot see an afternoon crash and will not pretend to.
+assumed_evening_departure = "17:30"
+
+[incidents]
+# Bounding box for the live incident query, covering the stretch of the route
+# that the regional incident feed does not reach. Order is min then max.
+# Keep this tight to the route. A box drawn around a home address is a way of
+# publishing a home address.
+min_lon = -71.1600
+min_lat = 42.3300
+max_lon = -71.0300
+max_lat = 42.4100
+
+# Venues whose events actually affect this route.
+#
+# This is an allowlist on purpose, not a radius search. Distance to the
+# destination is the wrong metric: a large arena whose crowds disperse away
+# from the route matters less than a small hall sitting on the road out. A
+# radius promotes venues on size and cannot know which direction traffic
+# leaves in. Curate this list; a radius query is a fine way to discover
+# candidates for it, but a poor way to filter.
+#
+# weight scales how much a scheduled event moves the confidence figure.
+# Start every venue at 1.0 and adjust only once logged history shows an event
+# there actually predicted a slower drive.
+
+[[venues]]
+name = "TD Garden"
+lat = 42.3662
+lon = -71.0621
+weight = 1.0
+
+[[venues]]
+name = "Fenway Park"
+lat = 42.3467
+lon = -71.0972
+weight = 1.0
