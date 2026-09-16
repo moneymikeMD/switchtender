@@ -8,6 +8,7 @@
 import { loadConfig, ConfigError } from './config.js';
 import { computeOptions, RouteError } from './routes.js';
 import { decide, speak } from './verdict.js';
+import { fetchIncidents } from './incidents.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
@@ -56,6 +57,12 @@ async function main() {
     );
   }
 
+  // The incident lookup is optional and never throws; it runs alongside the
+  // three routing requests. Without a key it is skipped entirely and the
+  // degraded list already says so.
+  const trafficKey = secrets.keys.TRAFFIC_API_KEY;
+  const incidentsPromise = trafficKey ? fetchIncidents(config, trafficKey) : Promise.resolve(null);
+
   let options;
   try {
     options = await computeOptions(config, secrets.keys.ROUTES_API_KEY);
@@ -79,7 +86,14 @@ async function main() {
     `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
   );
 
-  const verdict = decide(options, decision, { degraded: secrets.degraded });
+  const incidents = await incidentsPromise;
+  if (incidents) {
+    const state = incidents.score === null ? 'unknown' : incidents.unstable ? 'UNSTABLE' : 'steady';
+    const count = incidents.count === null ? '' : `, ${incidents.count} incidents in box`;
+    console.log(`  live incidents ${state}${count}`);
+  }
+
+  const verdict = decide(options, decision, { degraded: secrets.degraded, incidents });
   console.log('\nVerdict:');
   for (const [key, value] of Object.entries(verdict)) {
     console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);

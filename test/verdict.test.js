@@ -149,3 +149,54 @@ test('speak on a transit verdict says so twice', () => {
   assert.ok(line.endsWith('Take the train.'));
   assert.ok(line.includes('40 minutes'));
 });
+
+// Live incidents (CMB-22) feed confidence and the reason, never the choice.
+
+const steadyBox = { unstable: false, score: 0, count: 12, byCategory: {}, reasons: [] };
+const unstableBox = {
+  unstable: true,
+  score: 0.75,
+  count: 13,
+  byCategory: {},
+  reasons: ['accident on Example Pkwy to Sample St, 9 minutes of delay', 'second', 'third'],
+};
+const unknownBox = { unstable: false, score: null, count: null, byCategory: {}, reasons: ['live incidents unavailable: HTTP 500'] };
+
+test('a steady incident box changes nothing but records the score', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const withBox = decide(options(30, 60, 0), decision, { incidents: steadyBox });
+  assert.equal(withBox.choice, clean.choice);
+  assert.equal(withBox.confidence, clean.confidence);
+  assert.equal(withBox.incidentsScore, 0);
+  assert.equal(withBox.roadUnstable, false);
+});
+
+test('an unstable road lowers confidence, speaks at most two incident reasons, and never flips the choice', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { incidents: unstableBox });
+  assert.equal(v.choice, 'drive');
+  assert.equal(v.choice, clean.choice);
+  assert.ok(v.confidence < clean.confidence);
+  assert.equal(v.roadUnstable, true);
+  assert.equal(v.incidentsScore, 0.75);
+  assert.ok(v.reasons.includes('the drive estimate is unstable'));
+  assert.ok(v.reasons.includes(unstableBox.reasons[0]));
+  assert.ok(v.reasons.includes('second'));
+  assert.ok(!v.reasons.includes('third'));
+});
+
+test('a failed incident lookup is unknown, not clear: small penalty, reason, null score', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { incidents: unknownBox });
+  assert.equal(v.choice, clean.choice);
+  assert.ok(v.confidence < clean.confidence);
+  assert.equal(v.incidentsScore, null);
+  assert.equal(v.roadUnstable, false);
+  assert.ok(v.reasons.some((r) => r.startsWith('live incidents unavailable')));
+});
+
+test('no incidents context at all leaves the incident fields null and false', () => {
+  const v = decide(options(30, 60, 0), decision);
+  assert.equal(v.incidentsScore, null);
+  assert.equal(v.roadUnstable, false);
+});

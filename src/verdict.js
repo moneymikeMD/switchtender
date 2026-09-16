@@ -27,6 +27,9 @@ export const CONGESTION_MARGIN_SCALE = 3;
 export const PENALTY_UNKNOWN_CONGESTION = 0.2; // the deciding signal is missing
 export const PENALTY_PER_DEGRADED_SIGNAL = 0.1; // an optional feed has no key
 export const PENALTY_CLOSE_CALL = 0.2; // the choice hinged on a small number
+export const PENALTY_UNSTABLE_ROAD = 0.3; // a live crash or fresh closure ahead (CMB-22)
+export const PENALTY_UNKNOWN_INCIDENTS = 0.1; // the incident lookup was tried and failed
+export const MAX_INCIDENT_REASONS = 2; // spoken reasons from the incident feed
 export const CLOSE_CALL_MINUTES = 2; // |margin - required| below this is close
 export const CONFIDENCE_FLOOR = 0.1; // never zero: a verdict was still given
 
@@ -69,7 +72,9 @@ export function confidenceBand(confidence) {
  * @param options   { driveThrough: { totalSeconds, congestion }, parkAndRide: { totalSeconds } }
  *                  as returned by routes.buildOptions.
  * @param decision  config.decision: { transit_wins_ties, minimum_drive_margin_minutes }.
- * @param context   { degraded: [signal names] }, usually config.secrets.degraded.
+ * @param context   { degraded: [signal names], incidents } where degraded is
+ *                  usually config.secrets.degraded and incidents, if present,
+ *                  is the result of incidents.fetchIncidents.
  * @returns a plain object; every field is an input or output of the rule.
  */
 export function decide(options, decision, context = {}) {
@@ -134,6 +139,29 @@ export function decide(options, decision, context = {}) {
     reasons.push(`no ${signal} data`);
   }
 
+  // Live incidents (CMB-22): a trajectory signal, not a duration. An active
+  // crash or a fresh closure on the remaining road means the drive estimate
+  // is unstable, so confidence drops and the incident is the spoken reason.
+  // It never touches the choice. Absent context.incidents means the lookup was
+  // not attempted (no key), which `degraded` already accounts for.
+  const incidents = context.incidents ?? null;
+  let incidentsScore = null;
+  let roadUnstable = false;
+  if (incidents) {
+    if (incidents.score === null) {
+      confidence -= PENALTY_UNKNOWN_INCIDENTS;
+      reasons.push(incidents.reasons?.[0] ?? 'live incidents unavailable');
+    } else {
+      incidentsScore = Math.round(incidents.score * 100) / 100;
+      roadUnstable = Boolean(incidents.unstable);
+      if (roadUnstable) {
+        confidence -= PENALTY_UNSTABLE_ROAD;
+        reasons.push('the drive estimate is unstable');
+        reasons.push(...(incidents.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+      }
+    }
+  }
+
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
   return {
@@ -143,6 +171,8 @@ export function decide(options, decision, context = {}) {
     marginMinutes: round1(marginMinutes),
     requiredMarginMinutes: round1(requiredMarginMinutes),
     congestionScore: congestionUnknown ? null : Math.round(congestionScore * 100) / 100,
+    incidentsScore,
+    roadUnstable,
     confidence,
     reasons,
   };
