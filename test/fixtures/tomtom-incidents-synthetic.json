@@ -1,0 +1,44 @@
+{
+  "incidents": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "SYNTHETIC-ACCIDENT-1",
+        "iconCategory": 1,
+        "magnitudeOfDelay": 3,
+        "startTime": "2026-09-16T23:40:00Z",
+        "endTime": null,
+        "from": "Example Pkwy",
+        "to": "Sample St",
+        "length": 850.0,
+        "delay": 540,
+        "roadNumbers": ["US-1"],
+        "timeValidity": "present",
+        "events": [
+          { "code": 201, "description": "Accident", "iconCategory": 1 }
+        ]
+      },
+      "geometry": { "type": "LineString", "coordinates": [[-71.06, 42.36], [-71.05, 42.36]] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "SYNTHETIC-ROADWORKS-1",
+        "iconCategory": 9,
+        "magnitudeOfDelay": 1,
+        "startTime": "2026-08-01T12:00:00Z",
+        "endTime": "2026-12-31T23:59:00Z",
+        "from": "Placeholder Ave",
+        "to": "Stand-in Rd",
+        "length": 300.0,
+        "delay": 60,
+        "roadNumbers": [],
+        "timeValidity": "present",
+        "events": [
+          { "code": 701, "description": "Roadworks", "iconCategory": 9 }
+        ]
+      },
+      "geometry": { "type": "LineString", "coordinates": [[-71.07, 42.35], [-71.07, 42.34]] }
+    }
+  ]
+}
