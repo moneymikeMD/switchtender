@@ -1,0 +1,21 @@
+{
+  "displayFieldName": "",
+  "fieldAliases": {
+    "newest": "newest"
+  },
+  "fields": [
+    {
+      "name": "newest",
+      "type": "esriFieldTypeDate",
+      "alias": "newest",
+      "length": 8
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "newest": 1789531200000
+      }
+    }
+  ]
+}

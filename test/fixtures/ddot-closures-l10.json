@@ -1,0 +1,198 @@
+{
+  "objectIdFieldName": "OBJECTID",
+  "globalIdFieldName": "GlobalID",
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": {
+    "wkid": 102100,
+    "latestWkid": 3857
+  },
+  "fields": [
+    {
+      "name": "WorkLocationFullAddress",
+      "alias": "WorkLocationFullAddress",
+      "type": "esriFieldTypeString",
+      "length": 100
+    },
+    {
+      "name": "StatusDescription",
+      "alias": "StatusDescription",
+      "type": "esriFieldTypeString",
+      "length": 50
+    },
+    {
+      "name": "EffectiveDate",
+      "alias": "EffectiveDate",
+      "type": "esriFieldTypeDate",
+      "length": 8
+    },
+    {
+      "name": "ExpirationDate",
+      "alias": "ExpirationDate",
+      "type": "esriFieldTypeDate",
+      "length": 8
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1300 I STREET NW",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1527840000000,
+        "ExpirationDate": 1851408000000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1700 Q STREET SE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1785139200000,
+        "ExpirationDate": 1816588800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1300 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1302 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1304 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1306 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1308 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1310 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1312 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1314 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1316 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1318 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1320 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1322 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1324 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1326 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1328 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1330 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1332 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    },
+    {
+      "attributes": {
+        "WorkLocationFullAddress": "1334 W STREET NE",
+        "StatusDescription": "Issued",
+        "EffectiveDate": 1776067200000,
+        "ExpirationDate": 1791532800000
+      }
+    }
+  ],
+  "exceededTransferLimit": true
+}
