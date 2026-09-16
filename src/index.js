@@ -1,11 +1,13 @@
 // Entry point.
 //
-// Loads configuration, then computes the two onward options from the fork and
-// prints them. Turning those numbers into a verdict, and saying it out loud,
-// are later tickets; this prints the inputs a verdict would consume.
+// Loads configuration, computes the two onward options from the fork, decides
+// between them and prints both the spoken line and the structured verdict.
+// Every field of the verdict is printed because it will be logged (CMB-11) and
+// the rule's starting values are tuned from that log.
 
 import { loadConfig, ConfigError } from './config.js';
 import { computeOptions, RouteError } from './routes.js';
+import { decide, speak } from './verdict.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
@@ -76,7 +78,13 @@ async function main() {
   console.log(
     `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
   );
-  console.log('\nNo verdict yet: the decision rule is not implemented.');
+
+  const verdict = decide(options, decision, { degraded: secrets.degraded });
+  console.log('\nVerdict:');
+  for (const [key, value] of Object.entries(verdict)) {
+    console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);
+  }
+  console.log(`\n${speak(verdict)}`);
 }
 
 main().catch((error) => {
