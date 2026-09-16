@@ -1,0 +1,722 @@
+{
+  "data": [
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "SEE NOTES",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591391000,
+      "description": "Action Event @ MD 202 (LANDOVER RD) @ FIRE HOUSE RD [Fire Pre-Emption Signal]",
+      "direction": "North",
+      "id": "39011d1367620088006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 38.927402,
+      "lon": -76.881035,
+      "name": "Action Event @ MD 202 (LANDOVER RD) @ FIRE HOUSE RD [Fire Pre-Emption Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - SG04823"
+      ],
+      "source": "Other",
+      "startDateTime": 1787322899000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "SEE NOTES",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Baltimore",
+      "createTime": 1789591404000,
+      "description": "Action Event @ MD 140 (REISTERSTOWN RD) @ AVALON WAY [Traffic Control Signal]",
+      "direction": "North",
+      "id": "71ff118fbfb206a2006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 39.394985,
+      "lon": -76.746124,
+      "name": "Action Event @ MD 140 (REISTERSTOWN RD) @ AVALON WAY [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 04455SG"
+      ],
+      "source": "Other",
+      "startDateTime": 1789047439000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": []
+      },
+      "closed": false,
+      "county": "Montgomery",
+      "createTime": 1789602070000,
+      "description": "Incident @ MD 193 EAST AT PINEY BRANCH RD",
+      "direction": "East",
+      "id": "7e00de4d876208aa006ad32ec4235c0a",
+      "incidentType": "Utility Problem",
+      "lanes": [
+        {
+          "laneDescription": "RS",
+          "laneDirection": "west",
+          "laneStatus": "open",
+          "laneStatusTimestamp": 0,
+          "laneTrafficFlowDirection": "primary",
+          "laneType": "Shoulder"
+        },
+        {
+          "laneDescription": "L3",
+          "laneDirection": "west",
+          "laneStatus": "open",
+          "laneStatusTimestamp": 0,
+          "laneTrafficFlowDirection": "primary",
+          "laneType": "Traffic Lane"
+        }
+      ],
+      "lanesStatus": "2/3 Eastbound-2 right Traffic Lanes, right Shoulder closed",
+      "lastCachedDataUpdateTime": 1789602074895,
+      "lat": 38.999638,
+      "lon": -76.99539,
+      "name": "Incident @ MD 193 EAST AT PINEY BRANCH RD",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": true,
+      "participants": [],
+      "source": "Other",
+      "startDateTime": 1789551181000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 2,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Red Bulb Out"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Saint Mary's",
+      "createTime": 1789591319000,
+      "description": "Action Event @ MD 235 (THREE NOTCH RD) @ TOWN CREEK DR [Opticom Fire Pre-Emption Signal]",
+      "direction": "North",
+      "id": "2f006b8264980985006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.294407,
+      "lon": -76.50014,
+      "name": "Action Event @ MD 235 (THREE NOTCH RD) @ TOWN CREEK DR [Opticom Fire Pre-Emption Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 03709SG no AVL"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1787140227000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": []
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789601669000,
+      "description": "Incident @ MD 650 NORTH AT QUEBEC ST",
+      "direction": "North",
+      "id": "74ffd387bdf308aa006ad32ec4235c0a",
+      "incidentType": "Utility Problem",
+      "lanes": [
+        {
+          "laneDescription": "RS",
+          "laneDirection": "south",
+          "laneStatus": "open",
+          "laneStatusTimestamp": 0,
+          "laneTrafficFlowDirection": "primary",
+          "laneType": "Shoulder"
+        },
+        {
+          "laneDescription": "L3",
+          "laneDirection": "south",
+          "laneStatus": "open",
+          "laneStatusTimestamp": 0,
+          "laneTrafficFlowDirection": "primary",
+          "laneType": "Traffic Lane"
+        }
+      ],
+      "lanesStatus": "2/3 Northbound-2 right Traffic Lanes, right Shoulder closed",
+      "lastCachedDataUpdateTime": 1789601669688,
+      "lat": 38.99641,
+      "lon": -76.98474,
+      "name": "Incident @ MD 650 NORTH AT QUEBEC ST",
+      "opCenter": "TOC3",
+      "other": "",
+      "participantOnScene": true,
+      "participants": [],
+      "source": "State Highway Administration",
+      "startDateTime": 1789588359000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 2,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Green Bulb Out"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Charles",
+      "createTime": 1789591392000,
+      "description": "Action Event @ ST CHARLES PKWY @ ST MARKS DR [Traffic Control Signal]",
+      "direction": "South",
+      "id": "48010f693853018c006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.607513,
+      "lon": -76.88899,
+      "name": "Action Event @ ST CHARLES PKWY @ ST MARKS DR [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - SG27158 no AVL"
+      ],
+      "source": "Other",
+      "startDateTime": 1787581289000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "WARNING BEACON ACTIVATED",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Saint Mary's",
+      "createTime": 1789591401000,
+      "description": "Action Event @ MD 5 (POINT LOOKOUT RD) @ SUNNYSIDE RD (MB) [School Warning Beacon]",
+      "direction": "North",
+      "id": "8c00c4a46f5c059c006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.332504,
+      "lon": -76.67639,
+      "name": "Action Event @ MD 5 (POINT LOOKOUT RD) @ SUNNYSIDE RD (MB) [School Warning Beacon]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [],
+      "source": "Local Police",
+      "startDateTime": 1788632228000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Twisted"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789602270000,
+      "description": "Action Event @ MD 410 (RIVERDALE RD) @ 62ND PL [Traffic Control Signal]",
+      "direction": "East",
+      "id": "4700081bc0fa08aa006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 38.96099,
+      "lon": -76.91066,
+      "name": "Action Event @ MD 410 (RIVERDALE RD) @ 62ND PL [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [],
+      "source": "Citizen",
+      "startDateTime": 1789590043000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": []
+      },
+      "closed": false,
+      "county": "Howard",
+      "createTime": 1789601805000,
+      "description": "Incident @ I-70 WEST PRIOR TO BETHANY LA (MM 86.0)",
+      "direction": "West",
+      "id": "920040efd12708ab006ad32ec4235c0a",
+      "incidentType": "Debris In Roadway",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789601805978,
+      "lat": 39.29621,
+      "lon": -76.85584,
+      "name": "Incident @ I-70 WEST PRIOR TO BETHANY LA (MM 86.0)",
+      "opCenter": "TOC7",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [],
+      "source": "State Highway Administration",
+      "startDateTime": 1789601775000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 2,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": []
+      },
+      "closed": false,
+      "county": "Baltimore City",
+      "createTime": 1789593630000,
+      "description": "Safety Message Event @ BROENING HW EAST/WEST AT NORTH SERVICE RD (PORT OF BALTIMORE - MARYLAND PORT ADMINISTRATION)",
+      "direction": "East/West",
+      "id": "3e00b356c70308ab006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789593631578,
+      "lat": 39.256924,
+      "lon": -76.53259,
+      "name": "Safety Message Event @ BROENING HW EAST/WEST AT NORTH SERVICE RD (PORT OF BALTIMORE - MARYLAND PORT ADMINISTRATION)",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [],
+      "source": "Other",
+      "startDateTime": 1789592406000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "SAFETY MESSAGE:BROENING HW EAST/WEST AT NORTH SERVICE RD (PORT OF BALTIMORE - MARYLAND PORT ADMINISTRATION)",
+      "type": 254,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Red Bulb Out"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Cecil",
+      "createTime": 1789591405000,
+      "description": "Action Event @ MD 7 (PRINCIPIO FURNACE RD) @ US 40 (PULASKI HWY (WB/L)) [Traffic Control Signal]",
+      "direction": "North",
+      "id": "bb007a074e8907a4006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 39.582794,
+      "lon": -76.02162,
+      "name": "Action Event @ MD 7 (PRINCIPIO FURNACE RD) @ US 40 (PULASKI HWY (WB/L)) [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 06556SG"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1789167879000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Red Bulb Out"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Charles",
+      "createTime": 1789591399000,
+      "description": "Action Event @ POST OFFICE RD @ INDUSTRIAL PARK DR [Traffic Control Signal]",
+      "direction": "North",
+      "id": "27000bfa1fb00497006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 38.61445,
+      "lon": -76.902985,
+      "name": "Action Event @ POST OFFICE RD @ INDUSTRIAL PARK DR [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [],
+      "source": "Local Police",
+      "startDateTime": 1788326138000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "PED XING SIGN DOWN",
+            "actionType": "Other"
+          },
+          {
+            "actionDescription": "",
+            "actionType": "Signal Involved In Crash"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591401000,
+      "description": "Action Event @ MD 414 (ST BARNABAS RD) @ STAMP RD [Traffic Control Signal]",
+      "direction": "East",
+      "id": "b50048f920fd059a006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 38.827606,
+      "lon": -76.94385,
+      "name": "Action Event @ MD 414 (ST BARNABAS RD) @ STAMP RD [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 05789SG"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1788542457000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "PED SIGNAL CROSS BUTTON MISSING",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591402000,
+      "description": "Action Event @ MD 458 (SILVER HILL RD) @ BROOKS DR [Traffic Control Signal]",
+      "direction": "North",
+      "id": "600004c2172506a0006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 38.851543,
+      "lon": -76.91997,
+      "name": "Action Event @ MD 458 (SILVER HILL RD) @ BROOKS DR [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 01328SG"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1788880323000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Red Bulb Out"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Harford",
+      "createTime": 1789591401000,
+      "description": "Action Event @ TRIMBLE RD @ JOPPA FARM RD [Traffic Control Signal]",
+      "direction": "West",
+      "id": "3400954718e9059a006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354818,
+      "lat": 39.42167,
+      "lon": -76.36968,
+      "name": "Action Event @ TRIMBLE RD @ JOPPA FARM RD [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 06556SG"
+      ],
+      "source": "Local Police",
+      "startDateTime": 1788537159000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "DIM",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Cecil",
+      "createTime": 1789602458000,
+      "description": "Action Event @ US 40 (PULASKI HWY) @ COUDON BLVD [Traffic Control Signal] (MM 0.0)",
+      "direction": "East",
+      "id": "d50020ed43310498006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602458624,
+      "lat": 39.571117,
+      "lon": -76.066765,
+      "name": "Action Event @ US 40 (PULASKI HWY) @ COUDON BLVD [Traffic Control Signal] (MM 0.0)",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 06556SG"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1788359149000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Out Complete"
+          },
+          {
+            "actionDescription": "POWER FAILURE",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591405000,
+      "description": "Action Event @ MD 5 (BRANCH AVE (SB/L)) @ NO NAME [Opticom Fire Pre-Emption Signal]",
+      "direction": "South",
+      "id": "6e00dfb4354307a4006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.835766,
+      "lon": -76.94381,
+      "name": "Action Event @ MD 5 (BRANCH AVE (SB/L)) @ NO NAME [Opticom Fire Pre-Emption Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": true,
+      "participants": [
+        "SHA Signal Ops Unit - 06555SG"
+      ],
+      "source": "CHART Unit",
+      "startDateTime": 1789150132000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Stuck"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Charles",
+      "createTime": 1789591395000,
+      "description": "Action Event @ WESTERN PKWY @ PLAZA DR [Traffic Control Signal]",
+      "direction": "South",
+      "id": "e9ff37953b930394006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.6252,
+      "lon": -76.92189,
+      "name": "Action Event @ WESTERN PKWY @ PLAZA DR [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - SG80789",
+        "SHA Signal Ops Unit - 06553SG"
+      ],
+      "source": "Local Police",
+      "startDateTime": 1788122005000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Timing Off"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591401000,
+      "description": "Action Event @ MD 202 (LANDOVER RD) @ RAMP 7 FR MD 202 WB TO MD 295 SB [Traffic Control Signal]",
+      "direction": "North",
+      "id": "60009e987061059c006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.935497,
+      "lon": -76.91764,
+      "name": "Action Event @ MD 202 (LANDOVER RD) @ RAMP 7 FR MD 202 WB TO MD 295 SB [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - SG04823",
+        "SHA Signal Ops Unit - SG27158 no AVL"
+      ],
+      "source": "Citizen",
+      "startDateTime": 1788633496000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    },
+    {
+      "additionalData": {
+        "actionTypes": [
+          {
+            "actionDescription": "",
+            "actionType": "Signal Stuck"
+          },
+          {
+            "actionDescription": "GREEN ARROW SIGNAL NEVER ILLUMINATED",
+            "actionType": "Other"
+          }
+        ]
+      },
+      "closed": false,
+      "county": "Prince George's",
+      "createTime": 1789591400000,
+      "description": "Action Event @ MD 201 (KENILWORTH AVE) @ RIVERDALE RD [Traffic Control Signal]",
+      "direction": "North",
+      "id": "4e016c0548410498006ad32ec4235c0a",
+      "incidentType": "Other",
+      "lanes": [],
+      "lanesStatus": "",
+      "lastCachedDataUpdateTime": 1789602354820,
+      "lat": 38.9589,
+      "lon": -76.920006,
+      "name": "Action Event @ MD 201 (KENILWORTH AVE) @ RIVERDALE RD [Traffic Control Signal]",
+      "opCenter": "SOC",
+      "other": "",
+      "participantOnScene": false,
+      "participants": [
+        "SHA Signal Ops Unit - 05789SG"
+      ],
+      "source": "Other",
+      "startDateTime": 1788363013000,
+      "trafficAlert": false,
+      "trafficAlertTextMsg": "",
+      "type": 249,
+      "vehicles": "0 vehicles involved."
+    }
+  ],
+  "error": null,
+  "success": true,
+  "totalCount": 47,
+  "warnings": []
+}
