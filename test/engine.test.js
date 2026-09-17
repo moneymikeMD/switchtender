@@ -42,9 +42,10 @@ function stubFetch(seen = []) {
 
 test('the engine returns the same verdict decide() gives for the same inputs', async () => {
   const config = baseConfig();
-  const result = await runVerdict(config, { fetchImpl: stubFetch(), log: false });
+  const now = new Date('2026-09-17T12:00:00Z');
+  const result = await runVerdict(config, { fetchImpl: stubFetch(), log: false, now });
 
-  const options = await computeOptions(config, 'routes-key', stubFetch());
+  const options = await computeOptions(config, 'routes-key', stubFetch(), { now });
   const expected = decide(options, config.decision, {
     degraded: config.secrets.degraded,
     incidents: null,
@@ -52,6 +53,8 @@ test('the engine returns the same verdict decide() gives for the same inputs', a
     maryland: result.maryland,
     events: result.events,
     trackwork: result.trackwork,
+    now,
+    timeZone: config.route.timezone,
   });
 
   assert.deepEqual(result.verdict, expected);
@@ -94,4 +97,62 @@ test('an enabled log that cannot write reports failure instead of throwing', asy
   assert.equal(result.logged.ok, false);
   assert.equal(typeof result.logged.error, 'string');
   assert.ok(result.verdict.choice);
+});
+
+test('from=origin measures both legs from home, times the train off the lot arrival, and says so (CMB-29, CMB-30, CMB-32)', async () => {
+  const config = baseConfig();
+  const now = new Date('2026-09-17T12:00:00Z');
+  const bodies = [];
+  const seen = [];
+  const inner = stubFetch(seen);
+  const fetchImpl = async (url, init = {}) => {
+    if (String(url).startsWith(ROUTES)) bodies.push(JSON.parse(init.body));
+    return inner(url, init);
+  };
+
+  const result = await runVerdict(config, { fetchImpl, log: false, now, from: 'origin' });
+
+  // Both drives start at the origin, not the fork.
+  const drives = bodies.filter((b) => b.travelMode === 'DRIVE');
+  assert.equal(drives.length, 2);
+  for (const b of drives) {
+    assert.equal(b.origin.location.latLng.latitude, config.route.origin.lat);
+  }
+  // The train leaves when the driver is on the platform: 600 s drive + 300 s buffer.
+  const transit = bodies.find((b) => b.travelMode === 'TRANSIT');
+  assert.equal(transit.departureTime, '2026-09-17T12:15:00.000Z');
+  assert.deepEqual(transit.transitPreferences.allowedTravelModes, ['RAIL', 'SUBWAY']);
+
+  assert.equal(result.verdict.measuredFrom, 'origin');
+  assert.equal(result.options.startLabel, config.route.origin.label);
+  assert.ok(result.spoken.startsWith('Starting from home.'), result.spoken);
+  // 12:00Z is 08:00 in the example's zone; transit is 40 min, drive 45.
+  assert.equal(result.verdict.transitArrivalClock, '8:40 AM');
+  assert.equal(result.verdict.driveArrivalClock, '8:45 AM');
+  assert.match(result.spoken, /You would arrive at 8:40 AM\./);
+});
+
+test('a separate parking spot routes the drive there and adds the walk to the door (CMB-31)', async () => {
+  const config = baseConfig();
+  config.route.parking = { lat: 42.3522, lon: -71.0629, label: 'garage', walk_to_destination_minutes: 5 };
+  const bodies = [];
+  const inner = stubFetch();
+  const fetchImpl = async (url, init = {}) => {
+    if (String(url).startsWith(ROUTES)) bodies.push(JSON.parse(init.body));
+    return inner(url, init);
+  };
+
+  const result = await runVerdict(config, { fetchImpl, log: false, now: new Date('2026-09-17T12:00:00Z') });
+
+  const [driveThrough] = bodies.filter((b) => b.travelMode === 'DRIVE');
+  assert.equal(driveThrough.destination.location.latLng.latitude, 42.3522);
+  // The transit leg still ends at the destination door.
+  const transit = bodies.find((b) => b.travelMode === 'TRANSIT');
+  assert.equal(transit.destination.location.latLng.latitude, config.route.destination.lat);
+
+  assert.equal(result.options.driveThrough.driveSeconds, 2700);
+  assert.equal(result.options.driveThrough.walkSeconds, 300);
+  assert.equal(result.options.driveThrough.totalSeconds, 3000);
+  assert.equal(result.verdict.driveMinutes, 50);
+  assert.equal(result.options.parkingLabel, 'garage');
 });

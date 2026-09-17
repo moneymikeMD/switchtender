@@ -87,6 +87,12 @@ To hear it the way you would in the car:
 npm start 2>/dev/null | tail -1 | say      # macOS; use espeak or similar elsewhere
 ```
 
+Still at home and wondering about the whole trip rather than the fork?
+
+```bash
+npm start -- --from origin
+```
+
 ## Put it on the road
 
 - **Serve it.** [docs/deploy.md](docs/deploy.md) deploys the same engine to

@@ -86,3 +86,10 @@ Response: `{ "spoken": "...", "verdict": {...}, "computedAt": "..." }`. Speak
 `spoken`. A 503 means routing failed and there is no verdict; the phone says
 "Switchtender lookup failed" (see docs/phone.md) so silence is never mistaken
 for a missed trigger. A 401 means the key is wrong.
+
+`/verdict?from=origin` measures the whole trip from `route.origin` instead of
+the fork (CMB-30); the spoken line opens with "Starting from home." Any other
+`from` value is a 400. The verdict carries `measuredFrom`, and the arrival at
+the destination for each option as `driveArrival` / `transitArrival` (ISO) and
+`driveArrivalClock` / `transitArrivalClock` ("9:52 AM" in the commute's zone,
+CMB-32); the spoken line says the arrival for the chosen option.

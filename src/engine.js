@@ -32,12 +32,17 @@ import { fetchTrackwork } from './trackwork.js';
  * @param options.fetchImpl  fetch replacement for tests; every feed uses it
  * @param options.now        Date the run is stamped with (log row, closure windows)
  * @param options.log        false skips the sheet write even if config enables it
+ * @param options.from       'fork' (default) for the verdict at the fork, 'origin'
+ *                           for a whole-trip estimate from home (CMB-30)
  * @returns { options, incidents, closures, maryland, events, trackwork, verdict, spoken, logged }
  *          where events and trackwork are null when not consulted (no key, no lines),
  *          where logged is { ok, error } or null when nothing was attempted.
  * @throws RouteError when the onward options cannot be computed.
  */
-export async function runVerdict(config, { fetchImpl = fetch, now = new Date(), log = true } = {}) {
+export async function runVerdict(
+  config,
+  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork' } = {},
+) {
   const { decision, secrets } = config;
 
   const trafficKey = secrets.keys.TRAFFIC_API_KEY;
@@ -62,7 +67,10 @@ export async function runVerdict(config, { fetchImpl = fetch, now = new Date(), 
       })
     : Promise.resolve(null);
 
-  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl);
+  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, {
+    from,
+    now,
+  });
 
   // Closures (CMB-28) and Maryland records (CMB-16) are matched against the
   // drive geometry, so both wait for the polyline.
@@ -82,6 +90,8 @@ export async function runVerdict(config, { fetchImpl = fetch, now = new Date(), 
     maryland,
     events,
     trackwork,
+    now,
+    timeZone: config.route.timezone,
   });
 
   // CMB-11. Signals that postdate the frozen HEADER travel as extras and
@@ -102,6 +112,12 @@ export async function runVerdict(config, { fetchImpl = fetch, now = new Date(), 
       trackwork_active: trackwork ? trackwork.active : null,
       trackwork_upcoming: trackwork ? trackwork.upcoming : null,
       trackwork_stale_windows: trackwork ? trackwork.staleWindows : null,
+      // CMB-29 to CMB-32. A row from home is not comparable with a row from
+      // the fork, so the start point travels with it.
+      measured_from: options.measuredFrom ?? 'fork',
+      drive_walk_seconds: options.driveThrough.walkSeconds ?? 0,
+      drive_arrival: verdict.driveArrival,
+      transit_arrival: verdict.transitArrival,
     };
     logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl });
   }

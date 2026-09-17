@@ -20,7 +20,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, ConfigError } from './config.js';
-import { RouteError } from './routes.js';
+import { RouteError, START_POINTS } from './routes.js';
 import { runVerdict } from './engine.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
@@ -114,9 +114,20 @@ export function createServer({
       return;
     }
 
+    // ?from=origin asks for the whole trip from home (CMB-30). Checked after
+    // the key so an unauthenticated caller learns nothing about the API.
+    const from = url.searchParams.get('from') ?? 'fork';
+    if (!START_POINTS.includes(from)) {
+      send(res, 400, { error: `from must be one of ${START_POINTS.join(', ')}` });
+      return;
+    }
+
     const computedAt = now();
     try {
-      const { verdict, spoken } = await withTimeout(run(config, { now: computedAt }), timeoutMs);
+      const { verdict, spoken } = await withTimeout(
+        run(config, { now: computedAt, from }),
+        timeoutMs,
+      );
       send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString() });
     } catch (error) {
       if (error instanceof RouteError) {

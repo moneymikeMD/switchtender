@@ -11,6 +11,7 @@ import {
   requiredMargin,
   confidenceBand,
   CONGESTION_MARGIN_SCALE,
+  arrivalAt,
 } from '../src/verdict.js';
 
 const fixture = JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8'));
@@ -298,4 +299,53 @@ test('speak says at most three reason clauses and keeps the rest for the log', (
   assert.ok(line.toLowerCase().includes(v.reasons[0].toLowerCase()));
   assert.ok(line.includes(v.reasons[2]));
   assert.ok(!line.includes(v.reasons[3]));
+});
+
+test('arrival clocks are 12-hour in the commute zone, at midnight, noon and across a DST change (CMB-32)', () => {
+  const tz = 'America/New_York';
+  // 03:59:30Z + 30 s = 04:00Z = midnight EDT.
+  assert.equal(arrivalAt(new Date('2026-09-17T03:59:30Z'), 30, tz).clock, '12:00 AM');
+  assert.equal(arrivalAt(new Date('2026-09-17T15:30:00Z'), 30 * 60, tz).clock, '12:00 PM');
+  // 2026-11-01 05:30Z is 01:30 EDT; an hour later the clock reads 01:30 again, now EST.
+  const before = arrivalAt(new Date('2026-11-01T05:30:00Z'), 0, tz);
+  const after = arrivalAt(new Date('2026-11-01T05:30:00Z'), 3600, tz);
+  assert.equal(before.clock, '1:30 AM');
+  assert.equal(after.clock, '1:30 AM');
+  assert.equal(after.iso, '2026-11-01T06:30:00.000Z');
+  assert.equal(arrivalAt(new Date('2026-09-17T12:00:00Z'), 45 * 60, tz).clock, '8:45 AM');
+});
+
+test('decide stamps both arrivals when given a clock and a zone, and leaves them null otherwise', () => {
+  const options = buildOptions(fixture, 5);
+  const bare = decide(options, decision, {});
+  assert.equal(bare.driveArrival, null);
+  assert.equal(bare.transitArrivalClock, null);
+  assert.equal(bare.measuredFrom, 'fork');
+
+  const now = new Date('2026-09-17T12:00:00Z');
+  const v = decide(options, decision, { now, timeZone: 'America/New_York' });
+  assert.equal(v.driveArrival, '2026-09-17T12:45:00.000Z');
+  assert.equal(v.driveArrivalClock, '8:45 AM');
+  assert.equal(v.transitArrival, '2026-09-17T12:40:00.000Z');
+  assert.equal(v.transitArrivalClock, '8:40 AM');
+});
+
+test('speak says the arrival for the chosen option only, right after the times', () => {
+  const options = buildOptions(fixture, 5);
+  const now = new Date('2026-09-17T12:00:00Z');
+  const v = decide(options, decision, { now, timeZone: 'America/New_York' });
+  assert.equal(v.choice, 'transit');
+  const line = speak(v);
+  assert.match(line, /^Take the train\. The train is 40 minutes, driving is 45 minutes\. You would arrive at 8:40 AM\. /);
+  assert.doesNotMatch(line, /8:45 AM/);
+  // Without a clock the sentence is simply absent.
+  assert.doesNotMatch(speak(decide(options, decision, {})), /arrive/);
+});
+
+test('a whole-trip estimate opens by saying it was measured from home (CMB-30)', () => {
+  const options = { ...buildOptions(fixture, 5), measuredFrom: 'origin' };
+  const v = decide(options, decision, {});
+  assert.equal(v.measuredFrom, 'origin');
+  assert.ok(speak(v).startsWith('Starting from home. Take the train.'), speak(v));
+  assert.ok(speak(decide(buildOptions(fixture, 5), decision, {})).startsWith('Take the train.'));
 });

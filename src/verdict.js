@@ -90,6 +90,7 @@ export function confidenceBand(confidence) {
  */
 export function decide(options, decision, context = {}) {
   const degraded = context.degraded ?? [];
+  const measuredFrom = options.measuredFrom ?? 'fork';
   const driveMinutes = options.driveThrough.totalSeconds / 60;
   const transitMinutes = options.parkAndRide.totalSeconds / 60;
   const congestionScore = options.driveThrough.congestion?.score ?? null;
@@ -235,10 +236,24 @@ export function decide(options, decision, context = {}) {
 
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
+  // Arrival at the destination door for each option (CMB-32). Needs a clock
+  // and a zone; without both the fields are null and nothing is spoken.
+  const now = context.now instanceof Date ? context.now : null;
+  const timeZone = context.timeZone ?? null;
+  const arrival = (seconds) =>
+    now && timeZone ? arrivalAt(now, seconds, timeZone) : { iso: null, clock: null };
+  const driveArrival = arrival(options.driveThrough.totalSeconds);
+  const transitArrival = arrival(options.parkAndRide.totalSeconds);
+
   return {
     choice,
+    measuredFrom,
     driveMinutes: Math.round(driveMinutes),
     transitMinutes: Math.round(transitMinutes),
+    driveArrival: driveArrival.iso,
+    driveArrivalClock: driveArrival.clock,
+    transitArrival: transitArrival.iso,
+    transitArrivalClock: transitArrival.clock,
     marginMinutes: round1(marginMinutes),
     requiredMarginMinutes: round1(requiredMarginMinutes),
     congestionScore: congestionUnknown ? null : Math.round(congestionScore * 100) / 100,
@@ -265,10 +280,17 @@ const VERDICT_LINE = { drive: 'Keep driving.', transit: 'Take the train.' };
  */
 export function speak(verdict) {
   const said = VERDICT_LINE[verdict.choice];
+  // A whole-trip estimate (CMB-30) says where it was measured from, so the
+  // same sentence shape is never mistaken for the one heard at the fork.
+  const from = verdict.measuredFrom === 'origin' ? 'Starting from home.' : '';
   const times =
     verdict.choice === 'drive'
       ? `Driving is ${verdict.driveMinutes} minutes, the train is ${verdict.transitMinutes} minutes.`
       : `The train is ${verdict.transitMinutes} minutes, driving is ${verdict.driveMinutes} minutes.`;
+  // Arrival for the chosen option only (CMB-32, owner decision 2026-09-17):
+  // both are in the JSON, one is worth hearing.
+  const clock = verdict.choice === 'drive' ? verdict.driveArrivalClock : verdict.transitArrivalClock;
+  const arrival = clock ? `You would arrive at ${clock}.` : '';
   // At most MAX_SPOKEN_REASONS clauses are said aloud (owner decision
   // 2026-09-16); the full list stays on the verdict object for the log. The
   // first clause is always the time margin, so the cap trims signals, never
@@ -276,7 +298,27 @@ export function speak(verdict) {
   const spokenReasons = verdict.reasons.slice(0, MAX_SPOKEN_REASONS);
   const reason = spokenReasons.length > 0 ? `${capitalise(spokenReasons.join(', '))}.` : '';
   const confidence = `Confidence is ${confidenceBand(verdict.confidence)}.`;
-  return [said, times, reason, confidence, said].filter(Boolean).join(' ');
+  return [from, said, times, arrival, reason, confidence, said].filter(Boolean).join(' ');
 }
 
 const capitalise = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * When a trip of `seconds` starting at `now` ends, as an ISO instant and as a
+ * 12-hour clock reading in the commute's zone ("9:52 AM"). Twelve-hour is the
+ * owner's choice (CMB-32); a TTS engine reads "AM" and "PM" cleanly.
+ */
+export function arrivalAt(now, seconds, timeZone) {
+  const at = new Date(now.getTime() + seconds * 1000);
+  const clock = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  })
+    .format(at)
+    // Intl may separate the meridiem with a narrow no-break space; TTS and
+    // tests want a plain one.
+    .replace(/ | /g, ' ');
+  return { iso: at.toISOString(), clock };
+}

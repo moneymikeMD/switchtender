@@ -166,3 +166,23 @@ test('an unknown provider is rejected, and a club id on a ticketing venue is a m
     (e) => e instanceof ConfigError && e.message.includes('only meaningful with provider = "mlb"'),
   );
 });
+
+test('[route.parking] is optional; present, it needs a place and a non-negative walk (CMB-31)', () => {
+  assert.equal(parseConfig(exampleText).route.parking, null);
+
+  // The example ships the block commented out. Uncommenting it must parse.
+  const enabled = exampleText.replace(/^# (\[route\.parking\]|lat = 42\.3522|lon = -71\.0629|label = "Garage.*|walk_to_destination_minutes = 5)$/gm, '$1');
+  const parking = parseConfig(enabled).route.parking;
+  assert.equal(parking.lat, 42.3522);
+  assert.equal(parking.label, 'Garage on the far side of the Common');
+  assert.equal(parking.walk_to_destination_minutes, 5);
+
+  assert.throws(
+    () => parseConfig(enabled.replace('walk_to_destination_minutes = 5', 'walk_to_destination_minutes = -1')),
+    /walk_to_destination_minutes should be zero or more/,
+  );
+  assert.throws(
+    () => parseConfig(enabled.replace('walk_to_destination_minutes = 5\n', '')),
+    /missing required key "route.parking.walk_to_destination_minutes"/,
+  );
+});

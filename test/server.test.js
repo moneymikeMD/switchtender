@@ -115,3 +115,27 @@ test('keyMatches is constant-length and never throws on mismatched lengths', () 
   assert.equal(keyMatches(SECRET, ''), false);
   assert.equal(keyMatches(['a', 'b'], SECRET), false, 'a repeated header arrives as an array');
 });
+
+test('?from=origin reaches the pipeline; anything else but fork is a 400 after the key check (CMB-30)', async () => {
+  const calls = [];
+  const { base } = await start({
+    run: async (_config, opts) => {
+      calls.push(opts.from);
+      return { verdict, spoken: 'Take the train.' };
+    },
+  });
+  const headers = { [KEY_HEADER]: SECRET };
+
+  assert.equal((await fetch(`${base}/verdict`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/verdict?from=fork`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/verdict?from=origin`, { headers })).status, 200);
+  assert.deepEqual(calls, ['fork', 'fork', 'origin']);
+
+  const bad = await fetch(`${base}/verdict?from=garage`, { headers });
+  assert.equal(bad.status, 400);
+  assert.match((await bad.json()).error, /fork, origin/);
+  assert.equal(calls.length, 3);
+
+  // Unauthenticated: 401, not 400. The parameter is not validated for strangers.
+  assert.equal((await fetch(`${base}/verdict?from=garage`)).status, 401);
+});

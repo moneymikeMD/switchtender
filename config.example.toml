@@ -41,11 +41,23 @@ label = "Alewife station garage"
 # fare gates, and the garage queue at rush hour. Measure it; do not guess.
 park_to_platform_minutes = 5
 
-# Where the commute ends.
+# Where the commute ends: the door you walk through, not where the car stops.
+# The transit leg is measured to here, and so is the drive once the walk from
+# the parking spot below is added.
 [route.destination]
 lat = 42.3550
 lon = -71.0656
 label = "Boston Common"
+
+# Optional: where the car actually stops when it is not at the destination,
+# such as a cheaper garage a few blocks away. Driving is then routed here and
+# the walk to the destination is added, so both options end at the same door.
+# Leave the table out to drive to the destination itself with no walk.
+# [route.parking]
+# lat = 42.3522
+# lon = -71.0629
+# label = "Garage on the far side of the Common"
+# walk_to_destination_minutes = 5
 
 [trigger]
 # How far ahead of the decision point to deliver the verdict. Far enough to

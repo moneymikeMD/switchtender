@@ -198,3 +198,82 @@ test('the drive-through option carries its decoded polyline for spatial feeds, o
   delete bare.driveThrough.polyline;
   assert.equal(buildOptions(bare, 5).driveThrough.points, null);
 });
+
+test('the transit request is rail only and departs when the driver reaches the platform (CMB-29)', () => {
+  const body = transitRequest({ lat: 1, lon: 2 }, { lat: 3, lon: 4 }, { departureTime: '2026-09-17T12:15:00.000Z' });
+  assert.deepEqual(body.transitPreferences.allowedTravelModes, ['RAIL', 'SUBWAY']);
+  assert.equal(body.departureTime, '2026-09-17T12:15:00.000Z');
+  // Without a departure time the field is absent, not null: the API rejects null.
+  assert.equal('departureTime' in transitRequest({ lat: 1, lon: 2 }, { lat: 3, lon: 4 }), false);
+});
+
+test('computeOptions asks for the train after the drive to the lot has answered, departing drive plus buffer later', async () => {
+  const order = [];
+  const stub = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    order.push(body);
+    const which =
+      body.travelMode === 'TRANSIT'
+        ? fixture.transit
+        : order.length === 1
+          ? fixture.driveThrough
+          : fixture.driveToParkAndRide;
+    return { ok: true, json: async () => ({ routes: [which] }) };
+  };
+  const config = {
+    route: {
+      decision_point: { lat: 1, lon: 2, label: 'fork' },
+      park_and_ride: { lat: 3, lon: 4, label: 'pnr', park_to_platform_minutes: 5 },
+      destination: { lat: 5, lon: 6, label: 'door' },
+    },
+  };
+  const now = new Date('2026-09-17T12:00:00Z');
+  await computeOptions(config, 'k', stub, { now });
+  assert.equal(order[2].travelMode, 'TRANSIT');
+  // 600 s drive to the lot (fixture) + 300 s buffer.
+  assert.equal(order[2].departureTime, '2026-09-17T12:15:00.000Z');
+});
+
+test('computeOptions from the origin starts both drives at home; the transit leg is unchanged (CMB-30)', async () => {
+  const seen = [];
+  const stub = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    seen.push(body);
+    const which =
+      body.travelMode === 'TRANSIT'
+        ? fixture.transit
+        : seen.length === 1
+          ? fixture.driveThrough
+          : fixture.driveToParkAndRide;
+    return { ok: true, json: async () => ({ routes: [which] }) };
+  };
+  const config = {
+    route: {
+      origin: { lat: 42.46, lon: -71.35, label: 'home' },
+      decision_point: { lat: 42.4, lon: -71.22, label: 'fork' },
+      park_and_ride: { lat: 42.39, lon: -71.14, label: 'pnr', park_to_platform_minutes: 5 },
+      destination: { lat: 42.35, lon: -71.06, label: 'door' },
+    },
+  };
+  const options = await computeOptions(config, 'k', stub, { from: 'origin' });
+  const drives = seen.filter((b) => b.travelMode === 'DRIVE');
+  assert.equal(drives.length, 2);
+  for (const b of drives) assert.equal(b.origin.location.latLng.latitude, 42.46);
+  assert.equal(seen.find((b) => b.travelMode === 'TRANSIT').origin.location.latLng.latitude, 42.39);
+  assert.equal(options.measuredFrom, 'origin');
+  assert.equal(options.startLabel, 'home');
+
+  await assert.rejects(() => computeOptions(config, 'k', stub, { from: 'garage' }), RouteError);
+});
+
+test('a walk from the parking spot is added to the drive-through total and kept apart (CMB-31)', () => {
+  const plain = buildOptions(fixture, 5);
+  assert.equal(plain.driveThrough.totalSeconds, 2700);
+  assert.equal(plain.driveThrough.walkSeconds, 0);
+  const walked = buildOptions(fixture, 5, { walkMinutes: 5 });
+  assert.equal(walked.driveThrough.driveSeconds, 2700);
+  assert.equal(walked.driveThrough.walkSeconds, 300);
+  assert.equal(walked.driveThrough.totalSeconds, 3000);
+  // The park-and-ride option is untouched: its walk is already in the transit answer.
+  assert.equal(walked.parkAndRide.totalSeconds, 2400);
+});

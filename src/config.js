@@ -59,6 +59,22 @@ function place(raw, name) {
   return { lat, lon, label: must(raw, `route.${name}.label`, 'string') };
 }
 
+// Where the car actually stops (CMB-31). Optional: without it the drive ends
+// at the destination and there is no walk. With it, the drive-through leg is
+// routed to the parking spot and the configured walk to the door is added, so
+// both options are measured to the same place.
+function parkingBlock(raw) {
+  if (raw.route?.parking === undefined) return null;
+  const p = place(raw, 'parking');
+  const walk = must(raw, 'route.parking.walk_to_destination_minutes', 'number');
+  if (!Number.isFinite(walk) || walk < 0) {
+    throw new ConfigError(
+      `config: route.parking.walk_to_destination_minutes should be zero or more, got ${walk}`,
+    );
+  }
+  return { ...p, walk_to_destination_minutes: walk };
+}
+
 // The verdict log (CMB-11). Optional as a block: a config without [log]
 // simply does not log. Enabled, it needs somewhere to write to.
 function logBlock(raw) {
@@ -147,6 +163,7 @@ export function parseConfig(text) {
     'route.park_and_ride.park_to_platform_minutes',
     'number',
   );
+  route.parking = parkingBlock(raw);
 
   const bbox = {
     min_lon: must(raw, 'incidents.min_lon', 'number'),
