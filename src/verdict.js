@@ -30,6 +30,8 @@ export const PENALTY_CLOSE_CALL = 0.2; // the choice hinged on a small number
 export const PENALTY_UNSTABLE_ROAD = 0.3; // a live crash or fresh closure ahead (CMB-22)
 export const PENALTY_UNKNOWN_INCIDENTS = 0.1; // the incident lookup was tried and failed
 export const MAX_INCIDENT_REASONS = 2; // spoken reasons from the incident feed
+export const PENALTY_ROUTE_DISRUPTION = 0.1; // a planned closure or Maryland record on the route (CMB-16, CMB-23)
+export const PENALTY_UNKNOWN_FEED = 0.1; // a keyless feed was tried and failed
 export const CLOSE_CALL_MINUTES = 2; // |margin - required| below this is close
 export const CONFIDENCE_FLOOR = 0.1; // never zero: a verdict was still given
 
@@ -72,9 +74,11 @@ export function confidenceBand(confidence) {
  * @param options   { driveThrough: { totalSeconds, congestion }, parkAndRide: { totalSeconds } }
  *                  as returned by routes.buildOptions.
  * @param decision  config.decision: { transit_wins_ties, minimum_drive_margin_minutes }.
- * @param context   { degraded: [signal names], incidents } where degraded is
- *                  usually config.secrets.degraded and incidents, if present,
- *                  is the result of incidents.fetchIncidents.
+ * @param context   { degraded: [signal names], incidents, closures, maryland }
+ *                  where degraded is usually config.secrets.degraded and the
+ *                  other three, if present, are the results of
+ *                  incidents.fetchIncidents, closures.fetchClosures and
+ *                  chart.fetchChart.
  * @returns a plain object; every field is an input or output of the rule.
  */
 export function decide(options, decision, context = {}) {
@@ -162,6 +166,36 @@ export function decide(options, decision, context = {}) {
     }
   }
 
+  // Planned District closures (CMB-23) and Maryland CHART records on the
+  // route (CMB-16). Both are logged for modelling and, for now, only move
+  // confidence and the reason: a count of open permits or maintenance events
+  // has not yet been shown to predict a slower drive. Unknown (a failed
+  // fetch or a stale source) costs a little and is spoken; a clean zero costs
+  // nothing.
+  const closures = context.closures ?? null;
+  const closuresActive = closures ? closures.active : null;
+  if (closures) {
+    if (closures.active === null) {
+      confidence -= PENALTY_UNKNOWN_FEED;
+      reasons.push(closures.reasons?.[0] ?? 'planned closures unavailable');
+    } else if (closures.active > 0) {
+      confidence -= PENALTY_ROUTE_DISRUPTION;
+      reasons.push(closures.reasons?.[0] ?? `${closures.active} planned road closures near the destination`);
+    }
+  }
+
+  const maryland = context.maryland ?? null;
+  const marylandOnRoute = maryland ? maryland.onRoute : null;
+  if (maryland) {
+    if (maryland.onRoute === null) {
+      confidence -= PENALTY_UNKNOWN_FEED;
+      reasons.push(maryland.reasons?.[0] ?? 'maryland incidents unavailable');
+    } else if (maryland.onRoute > 0) {
+      confidence -= PENALTY_ROUTE_DISRUPTION;
+      reasons.push(maryland.reasons?.[0] ?? `${maryland.onRoute} maryland records on the route`);
+    }
+  }
+
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
   return {
@@ -173,6 +207,8 @@ export function decide(options, decision, context = {}) {
     congestionScore: congestionUnknown ? null : Math.round(congestionScore * 100) / 100,
     incidentsScore,
     roadUnstable,
+    closuresActive,
+    marylandOnRoute,
     confidence,
     reasons,
   };

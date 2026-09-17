@@ -10,6 +10,8 @@ import { computeOptions, RouteError } from './routes.js';
 import { decide, speak } from './verdict.js';
 import { fetchIncidents } from './incidents.js';
 import { logVerdict } from './log.js';
+import { fetchClosures } from './closures.js';
+import { fetchChart } from './chart.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
@@ -63,6 +65,10 @@ async function main() {
   // degraded list already says so.
   const trafficKey = secrets.keys.TRAFFIC_API_KEY;
   const incidentsPromise = trafficKey ? fetchIncidents(config, trafficKey) : Promise.resolve(null);
+  // Planned District closures need no key and only the config bounding box,
+  // so they can start now too. Maryland CHART needs the route geometry and
+  // waits for the routing response.
+  const closuresPromise = fetchClosures(config);
 
   let options;
   try {
@@ -87,14 +93,33 @@ async function main() {
     `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
   );
 
-  const incidents = await incidentsPromise;
+  const [incidents, closures, maryland] = await Promise.all([
+    incidentsPromise,
+    closuresPromise,
+    fetchChart(driveThrough.points),
+  ]);
   if (incidents) {
     const state = incidents.score === null ? 'unknown' : incidents.unstable ? 'UNSTABLE' : 'steady';
     const count = incidents.count === null ? '' : `, ${incidents.count} incidents in box`;
     console.log(`  live incidents ${state}${count}`);
   }
+  console.log(
+    closures.active === null
+      ? `  planned closures unknown (${closures.reasons[0]})`
+      : `  planned closures ${closures.active} active in box`,
+  );
+  console.log(
+    maryland.onRoute === null
+      ? `  maryland records unknown (${maryland.reasons[0]})`
+      : `  maryland records ${maryland.onRoute} on route of ${maryland.total}`,
+  );
 
-  const verdict = decide(options, decision, { degraded: secrets.degraded, incidents });
+  const verdict = decide(options, decision, {
+    degraded: secrets.degraded,
+    incidents,
+    closures,
+    maryland,
+  });
   console.log('\nVerdict:');
   for (const [key, value] of Object.entries(verdict)) {
     console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);
@@ -105,7 +130,17 @@ async function main() {
   // line and reports in one line. The sheet id is an address, not a secret,
   // but it is still not echoed in full.
   if (config.log.enabled) {
-    const logged = await logVerdict({ now: new Date(), config, options, incidents, verdict });
+    // Signals that postdate the frozen HEADER travel as extras and become
+    // trailing columns.
+    const extras = {
+      closures_active: closures.active,
+      closures_source_live: closures.sourceLive,
+      closures_addresses: closures.addresses.join(' | '),
+      maryland_on_route: maryland.onRoute,
+      maryland_total: maryland.total,
+      maryland_descriptions: maryland.descriptions.join(' | '),
+    };
+    const logged = await logVerdict({ now: new Date(), config, options, incidents, verdict, extras });
     const tail = config.log.sheet_id.slice(-4);
     console.log(
       logged.ok

@@ -200,3 +200,47 @@ test('no incidents context at all leaves the incident fields null and false', ()
   assert.equal(v.incidentsScore, null);
   assert.equal(v.roadUnstable, false);
 });
+
+// Planned closures (CMB-23) and Maryland CHART records (CMB-16): confidence
+// and reason only, never the choice.
+
+const noClosures = { active: 0, addresses: [], reasons: [], score: null, sourceLive: true };
+const someClosures = { active: 3, addresses: ['a', 'b', 'c'], reasons: ['planned road closure at 1300 Maine Avenue SW'], score: null, sourceLive: true };
+const staleClosures = { active: null, addresses: [], reasons: ['planned closures source stale'], score: null, sourceLive: false };
+const quietMaryland = { onRoute: 0, total: 47, descriptions: [], reasons: [], score: null };
+const busyMaryland = { onRoute: 2, total: 47, descriptions: ['x', 'y'], reasons: ['2 maryland records on the route: x; y'], score: null };
+const noMaryland = { onRoute: null, total: null, descriptions: [], reasons: ['maryland incidents unavailable: HTTP 500'], score: null };
+
+test('clean closure and maryland results cost nothing and are recorded as zero', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { closures: noClosures, maryland: quietMaryland });
+  assert.equal(v.confidence, clean.confidence);
+  assert.equal(v.closuresActive, 0);
+  assert.equal(v.marylandOnRoute, 0);
+});
+
+test('closures and maryland records on the route each lower confidence, add their reason, never flip the choice', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { closures: someClosures, maryland: busyMaryland });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.2));
+  assert.equal(v.closuresActive, 3);
+  assert.equal(v.marylandOnRoute, 2);
+  assert.ok(v.reasons.includes(someClosures.reasons[0]));
+  assert.ok(v.reasons.includes(busyMaryland.reasons[0]));
+});
+
+test('a stale or failed keyless feed is unknown: small penalty, spoken, null count', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { closures: staleClosures, maryland: noMaryland });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.2));
+  assert.equal(v.closuresActive, null);
+  assert.equal(v.marylandOnRoute, null);
+  assert.ok(v.reasons.includes('planned closures source stale'));
+  assert.ok(v.reasons.some((r) => r.startsWith('maryland incidents unavailable')));
+});
+
+function round(n) {
+  return Math.round(n * 10) / 10;
+}
