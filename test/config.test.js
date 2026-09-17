@@ -120,3 +120,12 @@ test('the example contains no coordinate from any maintainer commute', () => {
   // someone "helpfully" replacing it with their own real values.
   assert.doesNotMatch(exampleText, /39\.4\d{3}|-77\.3\d{3}/);
 });
+
+test('[transit] is optional, defaults to no lines, and rejects non-string lines', () => {
+  const base = readFileSync('config.example.toml', 'utf8');
+  assert.deepEqual(parseConfig(base).transit.lines, []);
+  const withLines = base.replace('lines = []', 'lines = ["Red", " Green "]');
+  assert.deepEqual(parseConfig(withLines).transit.lines, ['Red', 'Green']);
+  const bad = base.replace('lines = []', 'lines = ["Red", 7]');
+  assert.throws(() => parseConfig(bad), ConfigError);
+});

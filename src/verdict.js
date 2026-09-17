@@ -32,6 +32,8 @@ export const PENALTY_UNKNOWN_INCIDENTS = 0.1; // the incident lookup was tried a
 export const MAX_INCIDENT_REASONS = 2; // spoken reasons from the incident feed
 export const PENALTY_ROUTE_DISRUPTION = 0.1; // a planned closure or Maryland record on the route (CMB-16, CMB-23)
 export const PENALTY_UNKNOWN_FEED = 0.1; // a keyless feed was tried and failed
+export const PENALTY_EVENING_EVENT = 0.1; // a scheduled event near the destination this evening (CMB-13)
+export const PENALTY_TRACK_WORK = 0.2; // planned track work on the transit leg right now (CMB-26)
 export const CLOSE_CALL_MINUTES = 2; // |margin - required| below this is close
 export const CONFIDENCE_FLOOR = 0.1; // never zero: a verdict was still given
 
@@ -74,11 +76,12 @@ export function confidenceBand(confidence) {
  * @param options   { driveThrough: { totalSeconds, congestion }, parkAndRide: { totalSeconds } }
  *                  as returned by routes.buildOptions.
  * @param decision  config.decision: { transit_wins_ties, minimum_drive_margin_minutes }.
- * @param context   { degraded: [signal names], incidents, closures, maryland }
- *                  where degraded is usually config.secrets.degraded and the
- *                  other three, if present, are the results of
- *                  incidents.fetchIncidents, closures.fetchClosures and
- *                  chart.fetchChart.
+ * @param context   { degraded: [signal names], incidents, closures, maryland,
+ *                  events, trackwork } where degraded is usually
+ *                  config.secrets.degraded and the others, if present, are the
+ *                  results of incidents.fetchIncidents, closures.fetchClosures,
+ *                  chart.fetchChart, events.fetchEvents and
+ *                  trackwork.fetchTrackwork.
  * @returns a plain object; every field is an input or output of the rule.
  */
 export function decide(options, decision, context = {}) {
@@ -196,6 +199,36 @@ export function decide(options, decision, context = {}) {
     }
   }
 
+  // Scheduled events at the configured venues (CMB-13). The one agreed
+  // exception to ignoring the evening: a game or concert is already known, so
+  // it may lower confidence in the drive and be spoken. Still never the choice.
+  const events = context.events ?? null;
+  const eveningEvents = events && !events.unknown ? events.evening : null;
+  if (events) {
+    if (events.unknown) {
+      confidence -= PENALTY_UNKNOWN_FEED;
+      reasons.push(events.reasons?.[0] ?? 'scheduled events unavailable');
+    } else if (events.evening > 0) {
+      confidence -= PENALTY_EVENING_EVENT;
+      reasons.push(...(events.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+    }
+  }
+
+  // Planned track work on the transit leg (CMB-26). An active window makes
+  // the transit duration actively wrong, which is a bigger dent than an event.
+  // Upcoming windows are informational and not spoken at the fork.
+  const trackwork = context.trackwork ?? null;
+  const trackworkActive = trackwork && !trackwork.unknown ? trackwork.active : null;
+  if (trackwork) {
+    if (trackwork.unknown) {
+      confidence -= PENALTY_UNKNOWN_FEED;
+      reasons.push(trackwork.reasons?.[0] ?? 'track work schedule unavailable');
+    } else if (trackwork.active > 0) {
+      confidence -= PENALTY_TRACK_WORK;
+      reasons.push(...(trackwork.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+    }
+  }
+
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
   return {
@@ -209,6 +242,8 @@ export function decide(options, decision, context = {}) {
     roadUnstable,
     closuresActive,
     marylandOnRoute,
+    eveningEvents,
+    trackworkActive,
     confidence,
     reasons,
   };

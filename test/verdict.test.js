@@ -244,3 +244,44 @@ test('a stale or failed keyless feed is unknown: small penalty, spoken, null cou
 function round(n) {
   return Math.round(n * 10) / 10;
 }
+
+// Scheduled events (CMB-13) and planned track work (CMB-26): confidence and
+// reason only, never the choice.
+
+const quietEvents = { count: 0, evening: 0, weighted: 0, reasons: [], score: 0, unknown: false };
+const gameTonight = { count: 2, evening: 1, weighted: 1, reasons: ['Nationals Park game at 7:05 this evening'], score: 0.5, unknown: false };
+const noEvents = { count: null, evening: null, weighted: null, reasons: ['scheduled events unavailable: HTTP 500'], score: null, unknown: true };
+const noTrackwork = { active: 0, upcoming: 1, staleWindows: 0, reasons: [], score: null, unknown: false };
+const singleTracking = { active: 1, upcoming: 1, staleWindows: 1, reasons: ['planned track work on the Red Line through Sunday'], score: null, unknown: false };
+const noSchedule = { active: null, upcoming: null, staleWindows: null, reasons: ['track work schedule unavailable: no readable schedule table'], score: null, unknown: true };
+
+test('quiet events and no active track work cost nothing and record zeros', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { events: quietEvents, trackwork: noTrackwork });
+  assert.equal(v.confidence, clean.confidence);
+  assert.equal(v.eveningEvents, 0);
+  assert.equal(v.trackworkActive, 0);
+  assert.equal(v.reasons.length, clean.reasons.length);
+});
+
+test('an evening event and active track work each lower confidence and are spoken, choice untouched', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { events: gameTonight, trackwork: singleTracking });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.3));
+  assert.equal(v.eveningEvents, 1);
+  assert.equal(v.trackworkActive, 1);
+  assert.ok(v.reasons.includes(gameTonight.reasons[0]));
+  assert.ok(v.reasons.includes(singleTracking.reasons[0]));
+});
+
+test('unknown events or schedule cost a little, are spoken, and leave counts null', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { events: noEvents, trackwork: noSchedule });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.2));
+  assert.equal(v.eveningEvents, null);
+  assert.equal(v.trackworkActive, null);
+  assert.ok(v.reasons.some((r) => r.startsWith('scheduled events unavailable')));
+  assert.ok(v.reasons.some((r) => r.startsWith('track work schedule unavailable')));
+});

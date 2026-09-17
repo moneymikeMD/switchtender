@@ -81,6 +81,20 @@ function logBlock(raw) {
   return { enabled, sheet_id, sheet_tab };
 }
 
+// The transit leg (CMB-26). Optional: a config without [transit] names no rail
+// lines, so the planned track-work feed has nothing to match and stays quiet.
+function transitBlock(raw) {
+  const block = raw.transit ?? {};
+  if (typeof block !== 'object' || Array.isArray(block)) {
+    throw new ConfigError('config: [transit] should be a table');
+  }
+  const lines = block.lines ?? [];
+  if (!Array.isArray(lines) || lines.some((l) => typeof l !== 'string' || l.trim() === '')) {
+    throw new ConfigError('config: key "transit.lines" should be an array of non-empty strings');
+  }
+  return { lines: lines.map((l) => l.trim()) };
+}
+
 /** Parse and validate TOML text. Separated from file reading so it is testable. */
 export function parseConfig(text) {
   let raw;
@@ -122,6 +136,7 @@ export function parseConfig(text) {
   return {
     route,
     log: logBlock(raw),
+    transit: transitBlock(raw),
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
     decision: {
       transit_wins_ties: must(raw, 'decision.transit_wins_ties', 'boolean'),

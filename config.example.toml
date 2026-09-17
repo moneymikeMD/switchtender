@@ -69,6 +69,12 @@ minimum_drive_margin_minutes = 5
 # A morning forecast cannot see an afternoon crash and will not pretend to.
 assumed_evening_departure = "17:30"
 
+[transit]
+# Rail lines the transit leg rides, matched against the operator's planned
+# track-work schedule (currently the wmata.com table; the Boston example has no
+# equivalent source, so it names none and the signal stays quiet).
+lines = []
+
 [log]
 # One wide row per verdict, appended to a Google Sheet and queried through a
 # BigQuery external table (scripts/bq-external-table.sh). A failed write is
