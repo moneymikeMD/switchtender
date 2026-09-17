@@ -1,0 +1,303 @@
+{
+  "copyright": "Copyright 2026 MLB Advanced Media, L.P.  Use of any content on this page acknowledges agreement to the terms posted here http://gdx.mlb.com/components/copyright.txt",
+  "totalItems": 7,
+  "totalEvents": 0,
+  "totalGames": 7,
+  "totalGamesInProgress": 1,
+  "dates": [
+    {
+      "date": "2026-09-16",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 1,
+      "games": [
+        {
+          "gamePk": 822680,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-16T22:45:00Z",
+          "officialDate": "2026-09-16",
+          "status": {
+            "abstractGameState": "Live",
+            "detailedState": "In Progress",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 143,
+                "name": "Philadelphia Phillies"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            }
+          },
+          "venue": {
+            "id": 3309,
+            "name": "Nationals Park"
+          },
+          "dayNight": "night",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-18",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 823005,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-19T00:15:00Z",
+          "officialDate": "2026-09-18",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 138,
+                "name": "St. Louis Cardinals"
+              }
+            }
+          },
+          "venue": {
+            "id": 2889,
+            "name": "Busch Stadium"
+          },
+          "dayNight": "night",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-19",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 823003,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-19T23:15:00Z",
+          "officialDate": "2026-09-19",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 138,
+                "name": "St. Louis Cardinals"
+              }
+            }
+          },
+          "venue": {
+            "id": 2889,
+            "name": "Busch Stadium"
+          },
+          "dayNight": "night",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-20",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 823001,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-20T18:15:00Z",
+          "officialDate": "2026-09-20",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 138,
+                "name": "St. Louis Cardinals"
+              }
+            }
+          },
+          "venue": {
+            "id": 2889,
+            "name": "Busch Stadium"
+          },
+          "dayNight": "day",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-21",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 824221,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-21T22:40:00Z",
+          "officialDate": "2026-09-21",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 116,
+                "name": "Detroit Tigers"
+              }
+            }
+          },
+          "venue": {
+            "id": 2394,
+            "name": "Comerica Park"
+          },
+          "dayNight": "night",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-22",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 824222,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-22T22:40:00Z",
+          "officialDate": "2026-09-22",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 116,
+                "name": "Detroit Tigers"
+              }
+            }
+          },
+          "venue": {
+            "id": 2394,
+            "name": "Comerica Park"
+          },
+          "dayNight": "night",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    },
+    {
+      "date": "2026-09-23",
+      "totalItems": 1,
+      "totalEvents": 0,
+      "totalGames": 1,
+      "totalGamesInProgress": 0,
+      "games": [
+        {
+          "gamePk": 824223,
+          "gameType": "R",
+          "season": "2026",
+          "gameDate": "2026-09-23T17:10:00Z",
+          "officialDate": "2026-09-23",
+          "status": {
+            "abstractGameState": "Preview",
+            "detailedState": "Scheduled",
+            "startTimeTBD": false
+          },
+          "teams": {
+            "away": {
+              "team": {
+                "id": 120,
+                "name": "Washington Nationals"
+              }
+            },
+            "home": {
+              "team": {
+                "id": 116,
+                "name": "Detroit Tigers"
+              }
+            }
+          },
+          "venue": {
+            "id": 2394,
+            "name": "Comerica Park"
+          },
+          "dayNight": "day",
+          "doubleHeader": "N"
+        }
+      ],
+      "events": []
+    }
+  ]
+}

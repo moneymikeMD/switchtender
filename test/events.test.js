@@ -22,6 +22,19 @@ import {
   VENUE_MATCH_METRES,
   EventsError,
 } from '../src/events.js';
+import {
+  scheduleRequest,
+  normaliseGames,
+  fetchMlbGames,
+  nickname,
+  SCHEDULE_ENDPOINT,
+  MlbError,
+} from '../src/mlb.js';
+
+// Recorded live 2026-09-16: the Nationals' schedule for the 16th to the 23rd,
+// trimmed to the fields the module reads. Seven games: one at home on the 16th
+// and six on the road, so the venue filter has something to drop.
+const liveSchedule = JSON.parse(readFileSync('test/fixtures/mlb-schedule.json', 'utf8'));
 
 // Recorded live 2026-09-16: one venues.json lookup per keyword, key stripped.
 const liveVenues = JSON.parse(readFileSync('test/fixtures/ticketmaster-venues.json', 'utf8'));
@@ -385,4 +398,250 @@ test('fetchEvents never throws, whatever it is handed', async () => {
   assert.equal(empty.unknown, false);
   assert.equal(empty.count, 0);
   assert.equal(empty.score, 0);
+});
+
+// ---- Ballparks (CMB-25): MLB's own schedule replaces the ticketing source ----
+
+// The DC list with the ballpark moved to the mlb provider, as parseConfig
+// would produce it. Nationals Park is the venue Ticketmaster returned nothing
+// for across a full week, which is why this provider exists.
+const mixedVenues = dcVenues.map((v) =>
+  v.name === 'Nationals Park' ? { ...v, provider: 'mlb', mlb_team_id: 120 } : { ...v, provider: 'ticketmaster', mlb_team_id: null },
+);
+const mixedConfig = { ...config, venues: mixedVenues };
+const ballparkOnly = { ...config, venues: mixedVenues.filter((v) => v.provider === 'mlb') };
+
+test('the schedule request is one local day for one club, keyless, at the stats host', () => {
+  const { url, params } = scheduleRequest(120, { date: '2026-09-16', timeZone: TZ });
+  assert.equal(url, SCHEDULE_ENDPOINT);
+  assert.match(url, /^https:\/\/statsapi\.mlb\.com\/api\/v1\/schedule$/);
+  assert.deepEqual(params, { sportId: '1', teamId: '120', startDate: '2026-09-16', endDate: '2026-09-16' });
+  assert.throws(() => scheduleRequest('120', { date: '2026-09-16' }), MlbError);
+  assert.throws(() => scheduleRequest(0, { date: '2026-09-16' }), MlbError);
+  assert.throws(() => scheduleRequest(120, { date: '16/09/2026' }), MlbError);
+  assert.throws(() => scheduleRequest(120, {}), MlbError);
+});
+
+test('the live week has seven games and the venue filter keeps only the one at the ballpark', () => {
+  assert.equal(liveSchedule.totalGames, 7);
+  const all = liveSchedule.dates.flatMap((d) => d.games);
+  assert.equal(all.length, 7);
+  assert.equal(all.filter((g) => g.venue.name === 'Nationals Park').length, 1);
+  // Six away games, all with the club as the away team, all at other parks.
+  assert.equal(all.filter((g) => g.teams.away.team.id === 120).length, 6);
+
+  const games = normaliseGames(liveSchedule, 'Nationals Park', { timeZone: TZ });
+  assert.equal(games.length, 1);
+  const [game] = games;
+  assert.equal(game.name, 'Nationals vs Phillies');
+  assert.equal(game.venue, 'Nationals Park');
+  assert.equal(game.venueId, null);
+  assert.equal(game.startsAt, Date.parse('2026-09-16T22:45:00Z'));
+  assert.equal(game.localDate, '2026-09-16');
+  assert.equal(game.localTime, '18:45:00');
+  assert.equal(game.url, null);
+  assert.equal(game.kind, 'game');
+  assert.equal(game.attendanceHint, null);
+  // Matching is on the venue name, case-insensitive and trimmed, not on home/away.
+  assert.equal(normaliseGames(liveSchedule, '  nationals PARK ', { timeZone: TZ }).length, 1);
+  assert.equal(normaliseGames(liveSchedule, 'Busch Stadium', { timeZone: TZ }).length, 3);
+  assert.equal(normaliseGames(liveSchedule, 'Comerica Park', { timeZone: TZ }).length, 3);
+  assert.equal(normaliseGames(liveSchedule, 'Fenway Park', { timeZone: TZ }).length, 0);
+});
+
+test('a 7:05 pm Eastern game stored in UTC comes back on the right local date and clock', () => {
+  const schedule = {
+    totalGames: 1,
+    dates: [
+      {
+        date: '2026-09-25',
+        games: [
+          {
+            gameDate: '2026-09-25T23:05:00Z',
+            officialDate: '2026-09-25',
+            status: { detailedState: 'Scheduled', startTimeTBD: false },
+            teams: {
+              away: { team: { id: 121, name: 'New York Mets' } },
+              home: { team: { id: 120, name: 'Washington Nationals' } },
+            },
+            venue: { id: 3309, name: 'Nationals Park' },
+          },
+        ],
+      },
+    ],
+  };
+  const [game] = normaliseGames(schedule, 'Nationals Park', { timeZone: TZ });
+  assert.equal(game.name, 'Nationals vs Mets');
+  assert.equal(game.localDate, '2026-09-25');
+  assert.equal(game.localTime, '19:05:00');
+  assert.equal(game.startsAt, Date.parse('2026-09-25T19:05:00-04:00'));
+  // Through the shared assessor, the spoken line is the same shape as a
+  // Ticketmaster event's.
+  const night = { now: Date.parse('2026-09-25T12:00:00-04:00'), timeZone: TZ, eveningDeparture: '17:30' };
+  const result = assessEvents([game], mixedVenues, night);
+  assert.equal(result.evening, 1);
+  assert.deepEqual(result.reasons, ['Nationals Park game at 7:05 this evening']);
+  // A late game in a Pacific park is still the venue's local date after midnight UTC.
+  const west = normaliseGames(
+    { dates: [{ games: [{ ...schedule.dates[0].games[0], gameDate: '2026-09-26T02:40:00Z', venue: { name: 'Dodger Stadium' } }] }] },
+    'Dodger Stadium',
+    { timeZone: 'America/Los_Angeles' },
+  );
+  assert.equal(west[0].localDate, '2026-09-25');
+  assert.equal(west[0].localTime, '19:40:00');
+});
+
+test('a day with no game is [], a postponed or time-TBD game has no evening, and junk is null', () => {
+  // The real shape of an empty day, recorded on an off day.
+  assert.deepEqual(normaliseGames({ totalItems: 0, totalGames: 0, dates: [] }, 'Nationals Park', { timeZone: TZ }), []);
+  const base = liveSchedule.dates[0].games[0];
+  const withState = (patch) => ({ dates: [{ games: [{ ...base, status: { ...base.status, ...patch } }] }] });
+  assert.equal(normaliseGames(withState({ detailedState: 'Postponed' }), 'Nationals Park', { timeZone: TZ }).length, 0);
+  const tbd = normaliseGames(withState({ startTimeTBD: true }), 'Nationals Park', { timeZone: TZ });
+  assert.equal(tbd.length, 1);
+  assert.equal(tbd[0].startsAt, null);
+  assert.equal(tbd[0].localTime, null);
+  assert.equal(tbd[0].localDate, '2026-09-16');
+  for (const junk of [null, undefined, 'html', { messageNumber: 10, message: 'Object not found' }, { dates: 'x' }, { dates: [{ games: {} }] }]) {
+    assert.equal(normaliseGames(junk, 'Nationals Park', { timeZone: TZ }), null);
+  }
+  assert.equal(normaliseGames(liveSchedule, '', { timeZone: TZ }), null);
+});
+
+test('club nicknames drop the city and keep a two-word name whole', () => {
+  assert.equal(nickname('Washington Nationals'), 'Nationals');
+  assert.equal(nickname('Boston Red Sox'), 'Red Sox');
+  assert.equal(nickname('Chicago White Sox'), 'White Sox');
+  assert.equal(nickname('Toronto Blue Jays'), 'Blue Jays');
+  assert.equal(nickname('St. Louis Cardinals'), 'Cardinals');
+  assert.equal(nickname(undefined), 'unknown');
+});
+
+// A fetch stub that serves the ticketing host from the recorded lookups and
+// week, and the stats host from the recorded schedule, with a status per host.
+function twoSourceFetch({ tmStatus = 200, mlbStatus = 200, schedule = liveSchedule } = {}) {
+  const calls = [];
+  const fn = async (url, init) => {
+    const u = new URL(url);
+    calls.push({ url: u, init });
+    if (u.hostname === 'statsapi.mlb.com') {
+      if (mlbStatus !== 200) return { ok: false, status: mlbStatus, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => schedule };
+    }
+    if (tmStatus !== 200) return { ok: false, status: tmStatus, json: async () => ({}) };
+    if (u.pathname.endsWith('/venues.json')) {
+      const body = liveVenues[u.searchParams.get('keyword')] ?? { page: { totalElements: 0 } };
+      return { ok: true, status: 200, json: async () => body };
+    }
+    return { ok: true, status: 200, json: async () => liveEvents };
+  };
+  fn.calls = calls;
+  fn.mlbCalls = () => calls.filter((c) => c.url.hostname === 'statsapi.mlb.com');
+  fn.tmCalls = () => calls.filter((c) => c.url.hostname !== 'statsapi.mlb.com');
+  return fn;
+}
+
+test('fetchMlbGames asks for today at the ballpark with an ordinary User-Agent and no key', async () => {
+  const fetchImpl = twoSourceFetch();
+  const venue = mixedVenues.find((v) => v.provider === 'mlb');
+  const { events, reason } = await fetchMlbGames(venue, fetchImpl, { now: noon16, timeZone: TZ });
+  assert.equal(reason, null);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].name, 'Nationals vs Phillies');
+  assert.equal(fetchImpl.calls.length, 1);
+  const [{ url, init }] = fetchImpl.calls;
+  assert.equal(url.searchParams.get('teamId'), '120');
+  assert.equal(url.searchParams.get('startDate'), '2026-09-16');
+  assert.equal(url.searchParams.get('endDate'), '2026-09-16');
+  assert.equal(url.searchParams.has('apikey'), false);
+  assert.match(init.headers['User-Agent'], /^switchtender\//);
+});
+
+test('fetchMlbGames never throws: a 500, a thrown fetch, bad JSON and a bad venue are all named failures', async () => {
+  const venue = mixedVenues.find((v) => v.provider === 'mlb');
+  const cases = [
+    [venue, twoSourceFetch({ mlbStatus: 500 }), /HTTP 500/],
+    [venue, async (url) => { throw new TypeError(`fetch failed: ${url}`); }, /network error \(TypeError\)/],
+    [venue, async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } }), /unparseable/],
+    [venue, async () => ({ ok: true, status: 200, json: async () => ({ message: 'nope' }) }), /no schedule/],
+    [{ ...venue, mlb_team_id: null }, twoSourceFetch(), /team id/],
+  ];
+  for (const [v, fetchImpl, pattern] of cases) {
+    const { events, reason } = await fetchMlbGames(v, fetchImpl, { now: noon16, timeZone: TZ });
+    assert.equal(events, null);
+    assert.match(reason, /^ballpark schedule unavailable: /);
+    assert.match(reason, pattern);
+    assert.equal(reason.includes('statsapi'), false);
+  }
+  const noZone = await fetchMlbGames(venue, twoSourceFetch(), { now: noon16 });
+  assert.equal(noZone.events, null);
+});
+
+test('a mixed venue list merges both sources into one evening signal', async () => {
+  const fetchImpl = twoSourceFetch();
+  const result = await fetchEvents(mixedConfig, 'secret-key', fetchImpl, { now: noon16 });
+  assert.equal(result.unknown, false);
+  // The Anthem fight from the ticketing week plus the home game from the schedule.
+  assert.equal(result.evening, 2);
+  assert.equal(result.weighted, 2.0);
+  assert.equal(result.score, 1);
+  assert.deepEqual(result.reasons, [
+    'The Anthem game at 7:30 this evening',
+    'Nationals Park game at 6:45 this evening',
+  ]);
+  assert.deepEqual(result.resolved, ['Audi Field', 'The Anthem', 'Arena Stage', 'Nationals Park']);
+  assert.deepEqual(result.unresolved, []);
+  assert.deepEqual(result.notes, []);
+  // Three ticketing lookups plus one events call, plus one schedule call.
+  // The ballpark is never asked of Ticketmaster: it replaces, not adds.
+  assert.equal(fetchImpl.tmCalls().length, 4);
+  assert.equal(fetchImpl.mlbCalls().length, 1);
+  const keywords = fetchImpl.tmCalls().map((c) => c.url.searchParams.get('keyword')).filter(Boolean);
+  assert.equal(keywords.includes('Nationals Park'), false);
+  for (const c of fetchImpl.mlbCalls()) assert.equal(c.url.searchParams.has('apikey'), false);
+  assert.equal(JSON.stringify(result).includes('secret-key'), false);
+});
+
+test('with no ticketing key the ballpark still answers and the ticketing venues are reported skipped', async () => {
+  const fetchImpl = twoSourceFetch();
+  const result = await fetchEvents(mixedConfig, undefined, fetchImpl, { now: noon16 });
+  assert.equal(result.unknown, false);
+  assert.equal(result.count, 1);
+  assert.equal(result.evening, 1);
+  assert.equal(result.score, 0.5);
+  assert.deepEqual(result.reasons, ['Nationals Park game at 6:45 this evening']);
+  assert.deepEqual(result.resolved, ['Nationals Park']);
+  assert.deepEqual(result.unresolved, ['Audi Field', 'The Anthem', 'Arena Stage']);
+  assert.deepEqual(result.notes, ['ticketing source skipped: no EVENTS_API_KEY']);
+  assert.equal(fetchImpl.tmCalls().length, 0);
+  assert.equal(fetchImpl.mlbCalls().length, 1);
+  // A ballpark with no game today is a real zero, not unknown.
+  const offDay = twoSourceFetch({ schedule: { totalItems: 0, totalGames: 0, dates: [] } });
+  const quiet = await fetchEvents(ballparkOnly, '', offDay, { now: noon16 });
+  assert.equal(quiet.unknown, false);
+  assert.equal(quiet.count, 0);
+  assert.equal(quiet.score, 0);
+});
+
+test('a 500 from the schedule host is unknown for that venue only, and unknown outright when it was the only source', async () => {
+  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  assert.equal(result.unknown, false);
+  assert.equal(result.evening, 1);
+  assert.deepEqual(result.reasons, ['The Anthem game at 7:30 this evening']);
+  assert.deepEqual(result.unresolved, ['Nationals Park']);
+  assert.deepEqual(result.notes, ['Nationals Park: ballpark schedule unavailable: HTTP 500']);
+
+  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  assert.equal(alone.unknown, true);
+  assert.equal(alone.count, null);
+  assert.equal(alone.score, null);
+  assert.deepEqual(alone.reasons, ['ballpark schedule unavailable: HTTP 500']);
+  assert.deepEqual(alone.unresolved, ['Nationals Park']);
+
+  // The other way round: the ticketing host fails, the ballpark carries the signal.
+  const tmDown = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503 }), { now: noon16 });
+  assert.equal(tmDown.unknown, false);
+  assert.deepEqual(tmDown.reasons, ['Nationals Park game at 6:45 this evening']);
+  assert.deepEqual(tmDown.unresolved, ['Audi Field', 'The Anthem', 'Arena Stage']);
+  assert.match(tmDown.notes[0], /^ticketing source failed: venue lookup HTTP 503/);
 });

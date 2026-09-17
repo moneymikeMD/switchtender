@@ -15,6 +15,7 @@ import {
   loadConfig,
   ConfigError,
   SECRETS,
+  VENUE_PROVIDERS,
 } from '../src/config.js';
 
 const EXAMPLE = 'config.example.toml';
@@ -128,4 +129,40 @@ test('[transit] is optional, defaults to no lines, and rejects non-string lines'
   assert.deepEqual(parseConfig(withLines).transit.lines, ['Red', 'Green']);
   const bad = base.replace('lines = []', 'lines = ["Red", 7]');
   assert.throws(() => parseConfig(bad), ConfigError);
+});
+
+test('a venue defaults to the ticketing provider; the example ballpark names mlb and its club', () => {
+  const c = parseConfig(exampleText);
+  const [garden, fenway] = c.venues;
+  assert.equal(garden.name, 'TD Garden');
+  assert.equal(garden.provider, 'ticketmaster');
+  assert.equal(garden.mlb_team_id, null);
+  assert.equal(fenway.name, 'Fenway Park');
+  assert.equal(fenway.provider, 'mlb');
+  assert.equal(fenway.mlb_team_id, 111);
+  assert.deepEqual(VENUE_PROVIDERS, ['ticketmaster', 'mlb']);
+});
+
+test('provider = "mlb" without a club id is rejected, naming the venue and the key', () => {
+  const broken = exampleText.replace(/^mlb_team_id = 111\n/m, '');
+  assert.throws(
+    () => parseConfig(broken),
+    (e) => e instanceof ConfigError && e.message.includes('venues[1]') && e.message.includes('mlb_team_id'),
+  );
+  // A non-integer id is as useless as none.
+  for (const bad of ['mlb_team_id = 111.5', 'mlb_team_id = "111"', 'mlb_team_id = 0']) {
+    assert.throws(() => parseConfig(exampleText.replace(/^mlb_team_id = 111$/m, bad)), ConfigError, bad);
+  }
+});
+
+test('an unknown provider is rejected, and a club id on a ticketing venue is a mistake', () => {
+  // Anchored to the line: the comment above the venues mentions the same text.
+  assert.throws(
+    () => parseConfig(exampleText.replace(/^provider = "mlb"$/m, 'provider = "stubhub"')),
+    (e) => e instanceof ConfigError && e.message.includes('stubhub') && e.message.includes('ticketmaster, mlb'),
+  );
+  assert.throws(
+    () => parseConfig(exampleText.replace(/^provider = "mlb"\n/m, '')),
+    (e) => e instanceof ConfigError && e.message.includes('only meaningful with provider = "mlb"'),
+  );
 });

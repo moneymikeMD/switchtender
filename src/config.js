@@ -95,6 +95,42 @@ function transitBlock(raw) {
   return { lines: lines.map((l) => l.trim()) };
 }
 
+// Event providers a venue can name (CMB-25). Ticketmaster is the default and
+// needs EVENTS_API_KEY; "mlb" reads the keyless MLB schedule for one club and
+// replaces the ticketing source for that venue, because MLB sells through its
+// own platform and a ballpark is invisible to Ticketmaster.
+export const VENUE_PROVIDERS = ['ticketmaster', 'mlb'];
+
+function venueEntry(v, i) {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    throw new ConfigError(`config: venues[${i}] should be a table`);
+  }
+  for (const k of ['name', 'lat', 'lon', 'weight']) {
+    if (v[k] === undefined) {
+      throw new ConfigError(`config: venues[${i}] is missing "${k}"`);
+    }
+  }
+  const provider = v.provider ?? 'ticketmaster';
+  if (!VENUE_PROVIDERS.includes(provider)) {
+    throw new ConfigError(
+      `config: venues[${i}].provider should be one of ${VENUE_PROVIDERS.join(', ')}, got ${JSON.stringify(provider)}`,
+    );
+  }
+  let mlb_team_id = null;
+  if (provider === 'mlb') {
+    if (v.mlb_team_id === undefined) {
+      throw new ConfigError(`config: venues[${i}] has provider "mlb" and is missing "mlb_team_id"`);
+    }
+    if (!Number.isInteger(v.mlb_team_id) || v.mlb_team_id <= 0) {
+      throw new ConfigError(`config: venues[${i}].mlb_team_id should be a positive integer`);
+    }
+    mlb_team_id = v.mlb_team_id;
+  } else if (v.mlb_team_id !== undefined) {
+    throw new ConfigError(`config: venues[${i}].mlb_team_id is only meaningful with provider = "mlb"`);
+  }
+  return { name: v.name, lat: v.lat, lon: v.lon, weight: v.weight, provider, mlb_team_id };
+}
+
 /** Parse and validate TOML text. Separated from file reading so it is testable. */
 export function parseConfig(text) {
   let raw;
@@ -124,14 +160,7 @@ export function parseConfig(text) {
     );
   }
 
-  const venues = (raw.venues ?? []).map((v, i) => {
-    for (const k of ['name', 'lat', 'lon', 'weight']) {
-      if (v[k] === undefined) {
-        throw new ConfigError(`config: venues[${i}] is missing "${k}"`);
-      }
-    }
-    return { name: v.name, lat: v.lat, lon: v.lon, weight: v.weight };
-  });
+  const venues = (raw.venues ?? []).map((v, i) => venueEntry(v, i));
 
   return {
     route,
