@@ -3,8 +3,8 @@
   "globalIdFieldName": "GlobalID",
   "geometryType": "esriGeometryPoint",
   "spatialReference": {
-    "wkid": 102100,
-    "latestWkid": 3857
+    "wkid": 4326,
+    "latestWkid": 4326
   },
   "fields": [
     {
@@ -53,6 +53,10 @@
         "ExpirationDate": 1800867600000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Construction Staging Area"
+      },
+      "geometry": {
+        "x": -77.0295334823624,
+        "y": 38.88227060475729
       }
     },
     {
@@ -63,6 +67,10 @@
         "ExpirationDate": 1791619200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -76.9941943447867,
+        "y": 38.93725761403036
       }
     },
     {
@@ -73,6 +81,10 @@
         "ExpirationDate": 1793869200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.00980720186695,
+        "y": 38.95167204507559
       }
     },
     {
@@ -83,6 +95,10 @@
         "ExpirationDate": 1793869200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.01211830119165,
+        "y": 38.957668722510036
       }
     },
     {
@@ -93,6 +109,10 @@
         "ExpirationDate": 1791878400000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -76.98457449302158,
+        "y": 38.89284933919029
       }
     },
     {
@@ -103,6 +123,10 @@
         "ExpirationDate": 1792224000000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.08116446503257,
+        "y": 38.95703059744325
       }
     },
     {
@@ -113,6 +137,10 @@
         "ExpirationDate": 1791705600000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -76.9858127469789,
+        "y": 38.920581520219265
       }
     },
     {
@@ -123,6 +151,10 @@
         "ExpirationDate": 1790409600000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.00512897619154,
+        "y": 38.94151523568842
       }
     },
     {
@@ -133,6 +165,10 @@
         "ExpirationDate": 1790755200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.02877999077344,
+        "y": 38.97939990751175
       }
     },
     {
@@ -143,6 +179,10 @@
         "ExpirationDate": 1791100800000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.04004804716735,
+        "y": 38.94401198137575
       }
     },
     {
@@ -153,6 +193,10 @@
         "ExpirationDate": 1790928000000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.03991846788257,
+        "y": 38.941885168483964
       }
     },
     {
@@ -163,6 +207,10 @@
         "ExpirationDate": 1790755200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.03358334637801,
+        "y": 38.93649542492674
       }
     },
     {
@@ -173,6 +221,10 @@
         "ExpirationDate": 1791705600000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.03579746088973,
+        "y": 38.93471743001585
       }
     },
     {
@@ -183,6 +235,10 @@
         "ExpirationDate": 1792396800000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.03553602509089,
+        "y": 38.91187888998497
       }
     },
     {
@@ -193,6 +249,10 @@
         "ExpirationDate": 1790755200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -76.9847359175832,
+        "y": 38.91203166473289
       }
     },
     {
@@ -203,6 +263,10 @@
         "ExpirationDate": 1790755200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Construction Staging Area"
+      },
+      "geometry": {
+        "x": -76.99496558978063,
+        "y": 38.926508667355435
       }
     },
     {
@@ -213,6 +277,10 @@
         "ExpirationDate": 1793869200000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -76.99749210870374,
+        "y": 38.94340030625503
       }
     },
     {
@@ -223,6 +291,10 @@
         "ExpirationDate": 1791878400000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.0175855944362,
+        "y": 38.95161978638127
       }
     },
     {
@@ -233,6 +305,10 @@
         "ExpirationDate": 1793782800000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Lead Free DC"
+      },
+      "geometry": {
+        "x": -77.00130736420816,
+        "y": 38.888688335655125
       }
     },
     {
@@ -243,6 +319,10 @@
         "ExpirationDate": 1798794000000,
         "IsRoadClosed": "Y",
         "EventTypeDescription": "Construction Staging Area"
+      },
+      "geometry": {
+        "x": -77.04076961622438,
+        "y": 38.87687952369711
       }
     }
   ]

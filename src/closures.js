@@ -35,6 +35,20 @@
 // by creation or issue date: a permit issued weeks ago whose window covers
 // this morning is precisely the closure that matters. This signal moves
 // confidence and the spoken reason, never the verdict.
+//
+// Route matching (CMB-28): the District box holds about 80 active closures on
+// any given morning and almost none of them are on the drive. Permits are
+// point features (a geocoded block midpoint), so each one is matched to the
+// decoded drive polyline the way chart.js does it: point-to-vertex haversine
+// within a radius. The box-wide count is kept as `total` for the log; `active`
+// is the on-route count when route geometry is available.
+//
+// Geometry, verified live 2026-09-16: the layer's default output spatial
+// reference is Web Mercator (wkid 102100) even for a WGS84 envelope query, so
+// the request asks for outSR=4326. With that, geometry.x is longitude and
+// geometry.y is latitude.
+
+import { haversineMetres } from './polyline.js';
 
 const ENDPOINT = 'https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/FeatureServer';
 
@@ -59,6 +73,15 @@ const ISSUED = "StatusDescription = 'Issued'";
 
 const MAX_SPOKEN = 5;
 
+// How close a permit point must be to a polyline vertex to count as on the
+// route. A tuning guess, like chart.js's 400 m. Permits are geocoded to a
+// block midpoint, and a DC block runs roughly 100 to 200 m, so 300 m reaches a
+// permit on the block the route passes through (or its far end) while staying
+// tighter than the CHART radius, since a permit two blocks over on a parallel
+// street is noise. Revisit once logged on-route counts can be compared with
+// what actually slowed the drive.
+export const DEFAULT_RADIUS_METRES = 300;
+
 export class ClosureError extends Error {
   constructor(message) {
     super(message);
@@ -78,7 +101,8 @@ function checkLayer(layer) {
  *
  * Envelope geometry in WGS84 (inSR 4326), intersecting. Layer 11 adds the
  * road-closed clause; layer 10 has no such field and gets the issued clause
- * alone. No geometry comes back: the address is the spoken location.
+ * alone. Point geometry comes back in WGS84 (outSR 4326) for route matching;
+ * the address stays the spoken location.
  */
 export function closuresRequest(bbox, layer = LIVENESS_LAYER) {
   const def = checkLayer(layer);
@@ -105,7 +129,8 @@ export function closuresRequest(bbox, layer = LIVENESS_LAYER) {
       inSR: '4326',
       spatialRel: 'esriSpatialRelIntersects',
       outFields: outFields.join(','),
-      returnGeometry: 'false',
+      returnGeometry: 'true',
+      outSR: '4326',
     },
   };
 }
@@ -137,6 +162,11 @@ const epochMs = (value) => {
   return value == null || !Number.isFinite(n) ? null : n;
 };
 
+// A coordinate is only a coordinate if it is a finite number. Anything else
+// (absent geometry, a string, NaN) is null: an unplaceable permit, not one at
+// the origin.
+const coordinate = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+
 function normaliseOne(feature, layer) {
   const a = feature?.attributes ?? {};
   const def = LAYERS[layer];
@@ -145,6 +175,8 @@ function normaliseOne(feature, layer) {
     const flag = a[def.closedField];
     roadClosed = flag == null ? null : String(flag).toUpperCase() === 'Y';
   }
+  // ArcGIS point geometry with outSR 4326: x is longitude, y is latitude.
+  const g = feature?.geometry ?? {};
   return {
     address: typeof a.WorkLocationFullAddress === 'string' && a.WorkLocationFullAddress.trim()
       ? a.WorkLocationFullAddress.trim()
@@ -153,6 +185,8 @@ function normaliseOne(feature, layer) {
     effectiveAt: epochMs(a.EffectiveDate),
     expiresAt: epochMs(a.ExpirationDate),
     roadClosed,
+    lat: coordinate(g.y),
+    lon: coordinate(g.x),
     layer,
   };
 }
@@ -215,26 +249,54 @@ export function spokenAddress(address) {
     .join(' ');
 }
 
+/**
+ * True when the permit lies within radiusMetres of any polyline vertex.
+ *
+ * Point-to-vertex distance, not point-to-segment, for the same reason as
+ * chart.js: the polyline is dense enough that the radius absorbs the gap.
+ * A permit with no coordinates is never on the route (unknown, not near).
+ * Deliberately not imported from chart.js so the two signal modules stay
+ * independent of each other.
+ */
+export function nearRoute(points, record, radiusMetres = DEFAULT_RADIUS_METRES) {
+  if (!Array.isArray(points) || record?.lat == null || record?.lon == null) return false;
+  const here = [record.lat, record.lon];
+  for (const point of points) {
+    if (haversineMetres(point, here) <= radiusMetres) return true;
+  }
+  return false;
+}
+
 const UNKNOWN_REASON = 'planned closures unavailable';
 
 export const STALE_REASON = 'planned closures source stale';
 
+export const NO_ROUTE_REASON = 'planned closures counted District-wide: route geometry unavailable';
+
 function unknown(reason) {
-  return { active: null, addresses: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null };
+  return {
+    active: null, total: null, addresses: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null,
+  };
 }
 
 // Stale is a distinct outcome from unavailable: the feed answered, and its
 // answer disqualifies it (rule 5). sourceLive false records that finding.
 function stale() {
-  return { active: null, addresses: [], reasons: [STALE_REASON], score: null, sourceLive: false };
+  return { active: null, total: null, addresses: [], reasons: [STALE_REASON], score: null, sourceLive: false };
 }
 
 /**
  * Reduce permit records to one planned-closure signal.
  *
- * active      closures whose window covers now, or null when the input is null
- * addresses   up to five distinct addresses of those closures
- * reasons     spoken strings, one per listed address
+ * active      closures whose window covers now AND that sit within
+ *             radiusMetres of the drive polyline, or null when the input is
+ *             null. Without route geometry (points null or empty) it falls
+ *             back to the box-wide count and says so in reasons.
+ * total       closures whose window covers now anywhere in the box, for the
+ *             log. Equal to active in the fallback.
+ * addresses   up to five distinct addresses of the counted closures
+ * reasons     spoken strings, one per listed address, on-route ones first;
+ *             in the fallback the route-unavailable note comes last
  * score       always null for now. The ticket asks for confidence and a
  *             spoken reason, not a scored verdict input; that waits for
  *             logged history showing a permit predicts a slower drive.
@@ -242,26 +304,31 @@ function stale() {
  *             when nobody checked
  *
  * Only records the layer positively flags as a road closure count. Layer 10
- * records (roadClosed null) are unknown, and unknown is not a closure.
+ * records (roadClosed null) are unknown, and unknown is not a closure. A
+ * relevant permit with no coordinates counts in total but never in the
+ * on-route active count: it cannot be placed, and unplaceable is not near.
  */
-export function assessClosures(records, { now = Date.now(), sourceLive = null } = {}) {
+export function assessClosures(
+  records,
+  { now = Date.now(), sourceLive = null, points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
+) {
   if (!Array.isArray(records)) return unknown('no data');
+  const haveRoute = Array.isArray(points) && points.length > 0;
   const addresses = [];
   let active = 0;
+  let total = 0;
   for (const r of records) {
     if (r.roadClosed !== true || !relevant(r, now)) continue;
+    total += 1;
+    if (haveRoute && !nearRoute(points, r, radiusMetres)) continue;
     active += 1;
     if (r.address && !addresses.includes(r.address) && addresses.length < MAX_SPOKEN) {
       addresses.push(r.address);
     }
   }
-  return {
-    active,
-    addresses,
-    reasons: addresses.map((a) => `planned road closure at ${spokenAddress(a)}`),
-    score: null,
-    sourceLive,
-  };
+  const reasons = addresses.map((a) => `planned road closure at ${spokenAddress(a)}`);
+  if (!haveRoute) reasons.push(NO_ROUTE_REASON);
+  return { active, total, addresses, reasons, score: null, sourceLive };
 }
 
 async function getJson(request, fetchImpl) {
@@ -288,8 +355,18 @@ async function getJson(request, fetchImpl) {
  * (newest record before this month) is unknown with the reason 'planned
  * closures source stale', however many records it returned: a feed nobody
  * maintains can say nothing about this morning. Never throws.
+ *
+ * `points` is the decoded drive polyline ([lat, lon] pairs) used to pick out
+ * the on-route closures; without it the result counts the whole box. Either
+ * way the box query is the same, so a caller can start the fetch before the
+ * routing response and pass the points to assessClosures itself if it
+ * prefers.
  */
-export async function fetchClosures(config, fetchImpl = fetch, { now = Date.now() } = {}) {
+export async function fetchClosures(
+  config,
+  fetchImpl = fetch,
+  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
+) {
   let requests;
   try {
     requests = CLOSURE_LAYERS.map((layer) => ({ layer, request: closuresRequest(config?.incidents, layer) }));
@@ -314,5 +391,5 @@ export async function fetchClosures(config, fetchImpl = fetch, { now = Date.now(
     if (normalised === null) return unknown(`layer ${requests[i].layer} response had no feature list`);
     records.push(...normalised);
   }
-  return assessClosures(records, { now, sourceLive: true });
+  return assessClosures(records, { now, sourceLive: true, points, radiusMetres });
 }
