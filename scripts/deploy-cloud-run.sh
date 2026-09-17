@@ -63,9 +63,11 @@ secret_exists() { gcloud secrets describe "$1" --quiet >/dev/null 2>&1; }
 
 # op read and openssl both end their output with a newline. Stored as-is, the
 # container sees a 65-byte shared secret while the phone sends 64, and every
-# API key carries a stray byte. Strip line endings before anything reaches
-# Secret Manager. Values are never echoed.
-strip_newlines() { tr -d '\r\n'; }
+# API key carries a stray byte. Strip TRAILING line endings before anything
+# reaches Secret Manager. Only trailing: the config file is multi-line TOML
+# and flattening it onto one line made revision 00004 fail to start.
+# Values are never echoed.
+strip_newlines() { perl -0777 -pe 's/[\r\n]+\z//'; }
 
 # Create a secret from stdin if absent. Prints nothing about the value.
 create_secret_from_stdin() {
