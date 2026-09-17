@@ -58,3 +58,6 @@ desktop.ini
 .serena/
 .memorygraph/
 .claude/settings.local.json
+
+# night-watchman working artifacts (wave trail, session cost); not project history
+.night-watchman/
