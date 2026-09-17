@@ -44,8 +44,10 @@ file ownership, reviews the diff, merges, runs `npm test` and a live
    `config.toml`, which is gitignored. The committed example is a Boston
    commute and must stay one. A test fails if a maintainer coordinate shows up
    in it.
-2. **Private until CMB-24.** A history rewrite is still cheap. Before the
-   visibility flip, scan every commit, not just the working tree.
+2. **Public since 2026-09-16 (CMB-24).** History was rewritten once before
+   the flip; it cannot be rewritten again. Anything committed now is
+   published. Fixtures recorded from public feeds must have free-text contact
+   fields blanked before commit.
 3. **Unproven signals change confidence, not the verdict.** Incidents,
    closures, events and track work move the confidence number and the spoken
    reason. None of them flips the decision until logged history shows it
