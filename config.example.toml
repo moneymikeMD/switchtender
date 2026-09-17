@@ -106,6 +106,15 @@ max_lat = 42.4100
 # weight scales how much a scheduled event moves the confidence figure.
 # Start every venue at 1.0 and adjust only once logged history shows an event
 # there actually predicted a slower drive.
+#
+# provider names where the schedule comes from. The default, "ticketmaster",
+# needs EVENTS_API_KEY. Major League ballparks need provider = "mlb": MLB
+# sells through its own platform, so Ticketmaster lists nothing for them (a
+# full week at one park came back empty on 2026-09-16), and the biggest crowd
+# near the destination would otherwise be invisible. The mlb provider reads
+# the club's schedule from MLB's keyless stats API instead, and needs the
+# club's numeric mlb_team_id. It replaces the ticketing source for that venue
+# rather than sitting beside it.
 
 [[venues]]
 name = "TD Garden"
@@ -118,3 +127,5 @@ name = "Fenway Park"
 lat = 42.3467
 lon = -71.0972
 weight = 1.0
+provider = "mlb"
+mlb_team_id = 111

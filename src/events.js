@@ -10,10 +10,15 @@
 // (CMB-13) predates that rule and says "shift the verdict toward Metro"; the
 // rule wins.
 //
-// Provider: Ticketmaster Discovery v2. Venues are an allowlist from
-// config.venues, never a radius (see the comment in config.example.toml). The
-// vendor is hidden behind normaliseVenues and normaliseEvents so a swap
-// touches this file only.
+// Providers. Ticketmaster Discovery v2 by default; a venue with
+// provider = "mlb" is read from MLB's own schedule instead (src/mlb.js,
+// CMB-25), because MLB sells through its own platform and Ticketmaster lists
+// nothing for a ballpark. The mlb provider replaces the ticketing source for
+// that venue rather than sitting beside it. Venues are an allowlist from
+// config.venues, never a radius (see the comment in config.example.toml). Each
+// vendor is hidden behind its normalise function; the merged list is what
+// assessEvents sees, so the signal shape, the evening window, the weights and
+// the spoken reasons are the same whichever source a venue came from.
 //
 // Why two request shapes. Discovery's events endpoint filters by venueId, not
 // by venue name, and a keyword filter on events matches the event title, not
@@ -39,6 +44,7 @@
 // moves confidence and the spoken reason, never the verdict.
 
 import { haversineMetres } from './polyline.js';
+import { fetchMlbGames } from './mlb.js';
 
 const BASE = 'https://app.ticketmaster.com/discovery/v2';
 const VENUES_ENDPOINT = `${BASE}/venues.json`;
@@ -357,29 +363,16 @@ async function getJson(request, apiKey, fetchImpl) {
   }
 }
 
+const providerOf = (venue) => venue?.provider ?? 'ticketmaster';
+const MLB_UNAVAILABLE = 'ballpark schedule unavailable';
+
 /**
- * Resolve the configured venues to vendor ids, fetch today's events at them,
- * and assess. Returns the assessment with `resolved` (venues that matched a
- * vendor record) and `unresolved` (configured names that did not) added.
- *
- * Never throws: this is an optional signal, and losing it is a lower
- * confidence, not a missing verdict. Any failure yields the unknown shape with
- * a reason that names the failure class and never the key or the URL. A venue
- * that resolves to nothing is reported, not fatal; if none resolves, the
- * answer is unknown, because "no events" would then be a guess.
+ * The Ticketmaster half of fetchEvents: resolve venues to vendor ids and
+ * fetch today's events at them. Returns { events, resolved, unresolved,
+ * error }. `events` is null and `error` set when the source could not
+ * answer; a venue the vendor does not know lands in `unresolved`.
  */
-export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now() } = {}) {
-  if (!apiKey) return unknown('no EVENTS_API_KEY');
-
-  const venues = Array.isArray(config?.venues) ? config.venues : [];
-  const timeZone = config?.route?.timezone;
-  const eveningDeparture = config?.decision?.assumed_evening_departure;
-  // Fail before spending requests on a question the assessment cannot answer.
-  if (!timeZone || departureInstant(now, timeZone, eveningDeparture) === null) {
-    return unknown('no assumed evening departure');
-  }
-  if (venues.length === 0) return { ...assessEvents([], [], { now, timeZone, eveningDeparture }), resolved: [], unresolved: [] };
-
+async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone }) {
   const resolved = [];
   const unresolved = [];
   for (const venue of venues) {
@@ -387,17 +380,21 @@ export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Dat
     try {
       request = venuesRequest(venue);
     } catch (cause) {
-      return unknown(cause.message);
+      return { events: null, resolved: [], unresolved: [], error: cause.message };
     }
     const { data, error } = await getJson(request, apiKey, fetchImpl);
-    if (error) return unknown(`venue lookup ${error}`);
+    if (error) return { events: null, resolved: [], unresolved: [], error: `venue lookup ${error}` };
     const records = normaliseVenues(data);
-    if (records === null) return unknown('venue lookup had no venue list');
+    if (records === null) {
+      return { events: null, resolved: [], unresolved: [], error: 'venue lookup had no venue list' };
+    }
     const match = matchVenue(venue, records);
     if (match) resolved.push({ ...venue, id: match.id });
     else unresolved.push(venue.name);
   }
-  if (resolved.length === 0) return unknown('no configured venue matched a vendor record');
+  if (resolved.length === 0) {
+    return { events: null, resolved: [], unresolved, error: 'no configured venue matched a vendor record' };
+  }
 
   let request;
   try {
@@ -406,16 +403,98 @@ export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Dat
       { date: localDateOf(now, timeZone) },
     );
   } catch (cause) {
-    return unknown(cause.message);
+    return { events: null, resolved: [], unresolved, error: cause.message };
   }
   const { data, error } = await getJson(request, apiKey, fetchImpl);
-  if (error) return unknown(error);
+  if (error) return { events: null, resolved: [], unresolved, error };
   const events = normaliseEvents(data);
-  if (events === null) return unknown('response had no event list');
+  if (events === null) return { events: null, resolved: [], unresolved, error: 'response had no event list' };
+  return { events, resolved, unresolved, error: null };
+}
 
-  return {
-    ...assessEvents(events, resolved, { now, timeZone, eveningDeparture }),
-    resolved: resolved.map((v) => v.name),
-    unresolved,
-  };
+/**
+ * Fetch today's events at the configured venues, each from its provider,
+ * merge, and assess. Returns the assessment with `resolved` (venues whose
+ * source answered and, for Ticketmaster, matched a vendor record),
+ * `unresolved` (configured names that got no answer) and `notes` (one line
+ * per source that was skipped or failed, kept apart from `reasons` because
+ * the verdict speaks `reasons`) added.
+ *
+ * Never throws: this is an optional signal, and losing it is a lower
+ * confidence, not a missing verdict. A source failing yields unresolved
+ * venues and a note, never a thrown error and never a zero. The whole signal
+ * is unknown only when no source answered at all, because "no events" would
+ * then be a guess. A missing EVENTS_API_KEY skips the Ticketmaster venues and
+ * leaves the mlb venues working: the keyless source is the point of it. No
+ * reason ever carries the key or a URL.
+ */
+export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now() } = {}) {
+  const venues = Array.isArray(config?.venues) ? config.venues : [];
+  const ticketed = venues.filter((v) => providerOf(v) === 'ticketmaster');
+  const ballparks = venues.filter((v) => providerOf(v) === 'mlb');
+  if (!apiKey && ballparks.length === 0) return unknown('no EVENTS_API_KEY');
+
+  const timeZone = config?.route?.timezone;
+  const eveningDeparture = config?.decision?.assumed_evening_departure;
+  // Fail before spending requests on a question the assessment cannot answer.
+  if (!timeZone || departureInstant(now, timeZone, eveningDeparture) === null) {
+    return unknown('no assumed evening departure');
+  }
+  const clock = { now, timeZone, eveningDeparture };
+  if (venues.length === 0) {
+    return { ...assessEvents([], [], clock), resolved: [], unresolved: [], notes: [] };
+  }
+
+  const events = [];
+  const matched = [];
+  const resolved = [];
+  const unresolved = [];
+  const notes = [];
+  let answered = 0;
+  const failures = [];
+
+  if (ticketed.length > 0) {
+    if (!apiKey) {
+      unresolved.push(...ticketed.map((v) => v.name));
+      notes.push('ticketing source skipped: no EVENTS_API_KEY');
+    } else {
+      const tm = await fetchTicketmaster(ticketed, apiKey, fetchImpl, clock);
+      unresolved.push(...tm.unresolved);
+      if (tm.error) {
+        // A ticketing failure takes every ticketed venue with it; the
+        // unmatched ones are already listed.
+        for (const v of ticketed) if (!unresolved.includes(v.name)) unresolved.push(v.name);
+        notes.push(`ticketing source failed: ${tm.error}`);
+        failures.push(tm.error);
+      } else {
+        answered += 1;
+        events.push(...tm.events);
+        matched.push(...tm.resolved);
+        resolved.push(...tm.resolved.map((v) => v.name));
+      }
+    }
+  }
+
+  for (const venue of ballparks) {
+    const { events: games, reason } = await fetchMlbGames(venue, fetchImpl, { now, timeZone });
+    if (games === null) {
+      unresolved.push(venue.name);
+      notes.push(`${venue.name}: ${reason}`);
+      failures.push(reason);
+      continue;
+    }
+    answered += 1;
+    events.push(...games);
+    matched.push(venue);
+    resolved.push(venue.name);
+  }
+
+  if (answered === 0) {
+    const why = failures[0] ?? 'no configured venue matched a vendor record';
+    const shape = unknown(why);
+    // A ballpark failure already names itself; do not prefix it twice.
+    if (why.startsWith(MLB_UNAVAILABLE)) shape.reasons = [why];
+    return { ...shape, resolved: [], unresolved, notes };
+  }
+  return { ...assessEvents(events, matched, clock), resolved, unresolved, notes };
 }
