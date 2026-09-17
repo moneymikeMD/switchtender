@@ -30,7 +30,7 @@ function options(driveMin, transitMin, score) {
 }
 
 test('the fixture, 45 driving against 40 park and ride, goes to transit', () => {
-  const verdict = decide(buildOptions(fixture, 5), decision, { degraded: [] });
+  const verdict = decide(buildOptions(fixture, { platform: 5 }), decision, { degraded: [] });
   assert.equal(verdict.choice, 'transit');
   assert.equal(verdict.driveMinutes, 45);
   assert.equal(verdict.transitMinutes, 40);
@@ -145,7 +145,7 @@ test('speak puts the verdict first and last, with the minutes and a confidence w
 });
 
 test('speak on a transit verdict says so twice', () => {
-  const line = speak(decide(buildOptions(fixture, 5), decision, {}));
+  const line = speak(decide(buildOptions(fixture, { platform: 5 }), decision, {}));
   assert.ok(line.startsWith('Take the train.'));
   assert.ok(line.endsWith('Take the train.'));
   assert.ok(line.includes('40 minutes'));
@@ -316,7 +316,7 @@ test('arrival clocks are 12-hour in the commute zone, at midnight, noon and acro
 });
 
 test('decide stamps both arrivals when given a clock and a zone, and leaves them null otherwise', () => {
-  const options = buildOptions(fixture, 5);
+  const options = buildOptions(fixture, { platform: 5 });
   const bare = decide(options, decision, {});
   assert.equal(bare.driveArrival, null);
   assert.equal(bare.transitArrivalClock, null);
@@ -331,7 +331,7 @@ test('decide stamps both arrivals when given a clock and a zone, and leaves them
 });
 
 test('speak says the arrival for the chosen option only, right after the times', () => {
-  const options = buildOptions(fixture, 5);
+  const options = buildOptions(fixture, { platform: 5 });
   const now = new Date('2026-09-17T12:00:00Z');
   const v = decide(options, decision, { now, timeZone: 'America/New_York' });
   assert.equal(v.choice, 'transit');
@@ -343,9 +343,9 @@ test('speak says the arrival for the chosen option only, right after the times',
 });
 
 test('a whole-trip estimate opens by saying it was measured from home (CMB-30)', () => {
-  const options = { ...buildOptions(fixture, 5), measuredFrom: 'origin' };
+  const options = { ...buildOptions(fixture, { platform: 5 }), measuredFrom: 'origin' };
   const v = decide(options, decision, {});
   assert.equal(v.measuredFrom, 'origin');
   assert.ok(speak(v).startsWith('Starting from home. Take the train.'), speak(v));
-  assert.ok(speak(decide(buildOptions(fixture, 5), decision, {})).startsWith('Take the train.'));
+  assert.ok(speak(decide(buildOptions(fixture, { platform: 5 }), decision, {})).startsWith('Take the train.'));
 });

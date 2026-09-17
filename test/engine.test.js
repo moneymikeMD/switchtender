@@ -134,7 +134,7 @@ test('from=origin measures both legs from home, times the train off the lot arri
 
 test('a separate parking spot routes the drive there and adds the walk to the door (CMB-31)', async () => {
   const config = baseConfig();
-  config.route.parking = { lat: 42.3522, lon: -71.0629, label: 'garage', walk_to_destination_minutes: 5 };
+  config.route.parking = { lat: 42.3522, lon: -71.0629, label: 'garage', addl_walk_mins: 5 };
   const bodies = [];
   const inner = stubFetch();
   const fetchImpl = async (url, init = {}) => {

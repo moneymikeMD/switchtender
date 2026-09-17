@@ -39,38 +39,51 @@ there.
 | --- | --- |
 | `timezone` | IANA name. Everything user-facing is local time; everything stored is UTC. |
 
-### `[route.origin]`, `[route.park_and_ride]`, `[route.destination]`
+### Places: one shape (CMB-33)
 
-Each takes `lat`, `lon` and a human `label`. The label is what gets spoken and
-logged, so write it the way you would say it out loud.
+Every `[route.*]` table is a place with exactly four keys: `lat`, `lon`, a
+human `label`, and `addl_walk_mins`. The label is what gets spoken and
+logged, so write it the way you would say it out loud. `addl_walk_mins` is
+the minutes on foot added to any leg that ends at that place; it defaults to
+0 and may be left out. Any other key is an error that names it, so a renamed
+or misspelt field can never silently become a zero.
 
-`park_and_ride` additionally takes `park_to_platform_minutes`: the time from
-stopping the car to standing on the platform. Garage queue, walk, stairs, fare
+### `[route.origin]`
+
+Where the commute starts. It plays no part in the verdict at the fork, but
+`npm start -- --from origin` or `GET /verdict?from=origin` measures the whole
+trip from it, for a look at both options before leaving the house (CMB-30).
+The spoken line then opens with "Starting from home." Its walk is the one
+from the door to the car, counted only when measuring from here.
+
+### `[route.decision_point]`
+
+The fork. Past it the options are no longer interchangeable. No leg ends
+here, so its walk is accepted and never used.
+
+### `[route.park_and_ride]`
+
+Where the driver would leave the car to take transit. Its walk is the time
+from stopping the car to standing on the platform: garage queue, stairs, fare
 gates. Measure it on a normal weekday rather than estimating it, because it is
 a constant added to every transit verdict and a wrong value biases every
 decision the tool ever makes in the same direction.
 
-`destination` is the door you walk through, not where the car stops. The
-transit leg is measured to it, and so is the drive once the walk below is
-added.
+### `[route.destination]`
 
-`origin` is where the commute starts. It plays no part in the verdict at the
-fork, but `npm start -- --from origin` or `GET /verdict?from=origin` measures
-the whole trip from it, for a look at both options before leaving the house
-(CMB-30). The spoken line then opens with "Starting from home."
+The door you walk through, not where the car stops. The transit leg is
+measured to it, and so is the drive once the parking walk is added. The
+transit answer already includes its final walk, so this place's walk is
+normally 0.
 
 ### `[route.parking]` (optional)
 
 Where the car actually stops when that is not the destination: a cheaper
-garage a few blocks from work, say. Takes `lat`, `lon`, `label` and
-`walk_to_destination_minutes`. With it present, driving is routed to the
-parking spot and the walk is added to the driving time, so both options end
-at the same door and the comparison is fair (CMB-31). Leave the table out to
-drive to the destination itself with no walk. Time the walk; do not guess it.
-
-### `[route.decision_point]`
-
-The fork. Past it the options are no longer interchangeable.
+garage a few blocks from work, say. With it present, driving is routed to the
+parking spot and its walk (car to the destination door) is added to the
+driving time, so both options end at the same door and the comparison is fair
+(CMB-31). Leave the table out to drive to the destination itself. Time the
+walk; do not guess it.
 
 ### `[trigger]`
 

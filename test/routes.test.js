@@ -97,7 +97,7 @@ test('out-of-range interval indices are clamped rather than throwing', () => {
 });
 
 test('the two options are comparable totals measured from the fork', () => {
-  const options = buildOptions(fixture, 5);
+  const options = buildOptions(fixture, { platform: 5 });
   assert.equal(options.driveThrough.totalSeconds, 2700);
   // 600 driving + 300 buffer + 1500 transit
   assert.equal(options.parkAndRide.totalSeconds, 2400);
@@ -107,8 +107,8 @@ test('the two options are comparable totals measured from the fork', () => {
 });
 
 test('the park-to-platform buffer actually changes the total', () => {
-  assert.equal(buildOptions(fixture, 0).parkAndRide.totalSeconds, 2100);
-  assert.equal(buildOptions(fixture, 10).parkAndRide.totalSeconds, 2700);
+  assert.equal(buildOptions(fixture, { platform: 0 }).parkAndRide.totalSeconds, 2100);
+  assert.equal(buildOptions(fixture, { platform: 10 }).parkAndRide.totalSeconds, 2700);
 });
 
 test('driving asks for the optimal traffic preference and speed intervals', () => {
@@ -145,7 +145,7 @@ test('computeOptions issues three requests from the fork, not from the origin', 
     route: {
       origin: { lat: 42.46, lon: -71.35, label: 'origin' },
       decision_point: { lat: 42.4, lon: -71.22, label: 'fork' },
-      park_and_ride: { lat: 42.39, lon: -71.14, label: 'pnr', park_to_platform_minutes: 5 },
+      park_and_ride: { lat: 42.39, lon: -71.14, label: 'pnr', addl_walk_mins: 5 },
       destination: { lat: 42.35, lon: -71.06, label: 'destination' },
     },
   };
@@ -166,7 +166,7 @@ test('an HTTP failure raises a RouteError that does not echo the request', async
   const config = {
     route: {
       decision_point: { lat: 1, lon: 2 },
-      park_and_ride: { lat: 3, lon: 4, park_to_platform_minutes: 5 },
+      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
       destination: { lat: 5, lon: 6 },
     },
   };
@@ -181,7 +181,7 @@ test('an empty route list is an error, not an undefined duration', async () => {
   const config = {
     route: {
       decision_point: { lat: 1, lon: 2 },
-      park_and_ride: { lat: 3, lon: 4, park_to_platform_minutes: 5 },
+      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
       destination: { lat: 5, lon: 6 },
     },
   };
@@ -189,14 +189,14 @@ test('an empty route list is an error, not an undefined duration', async () => {
 });
 
 test('the drive-through option carries its decoded polyline for spatial feeds, or null without one', () => {
-  const options = buildOptions(fixture, 5);
+  const options = buildOptions(fixture, { platform: 5 });
   assert.ok(Array.isArray(options.driveThrough.points));
   assert.ok(options.driveThrough.points.length > 2);
   assert.equal(options.driveThrough.points[0].length, 2);
 
   const bare = structuredClone(fixture);
   delete bare.driveThrough.polyline;
-  assert.equal(buildOptions(bare, 5).driveThrough.points, null);
+  assert.equal(buildOptions(bare, { platform: 5 }).driveThrough.points, null);
 });
 
 test('the transit request is rail only and departs when the driver reaches the platform (CMB-29)', () => {
@@ -223,7 +223,7 @@ test('computeOptions asks for the train after the drive to the lot has answered,
   const config = {
     route: {
       decision_point: { lat: 1, lon: 2, label: 'fork' },
-      park_and_ride: { lat: 3, lon: 4, label: 'pnr', park_to_platform_minutes: 5 },
+      park_and_ride: { lat: 3, lon: 4, label: 'pnr', addl_walk_mins: 5 },
       destination: { lat: 5, lon: 6, label: 'door' },
     },
   };
@@ -251,7 +251,7 @@ test('computeOptions from the origin starts both drives at home; the transit leg
     route: {
       origin: { lat: 42.46, lon: -71.35, label: 'home' },
       decision_point: { lat: 42.4, lon: -71.22, label: 'fork' },
-      park_and_ride: { lat: 42.39, lon: -71.14, label: 'pnr', park_to_platform_minutes: 5 },
+      park_and_ride: { lat: 42.39, lon: -71.14, label: 'pnr', addl_walk_mins: 5 },
       destination: { lat: 42.35, lon: -71.06, label: 'door' },
     },
   };
@@ -267,13 +267,69 @@ test('computeOptions from the origin starts both drives at home; the transit leg
 });
 
 test('a walk from the parking spot is added to the drive-through total and kept apart (CMB-31)', () => {
-  const plain = buildOptions(fixture, 5);
+  const plain = buildOptions(fixture, { platform: 5 });
   assert.equal(plain.driveThrough.totalSeconds, 2700);
   assert.equal(plain.driveThrough.walkSeconds, 0);
-  const walked = buildOptions(fixture, 5, { walkMinutes: 5 });
+  const walked = buildOptions(fixture, { platform: 5, driveEnd: 5 });
   assert.equal(walked.driveThrough.driveSeconds, 2700);
   assert.equal(walked.driveThrough.walkSeconds, 300);
   assert.equal(walked.driveThrough.totalSeconds, 3000);
   // The park-and-ride option is untouched: its walk is already in the transit answer.
   assert.equal(walked.parkAndRide.totalSeconds, 2400);
+});
+
+test('each walk folds into the leg that ends at its place; the origin walk counts only from home (CMB-33)', async () => {
+  const stub = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    const which =
+      body.travelMode === 'TRANSIT'
+        ? fixture.transit
+        : body.destination.location.latLng.latitude === 9
+          ? fixture.driveThrough
+          : fixture.driveToParkAndRide;
+    return { ok: true, json: async () => ({ routes: [which] }) };
+  };
+  const config = {
+    route: {
+      origin: { lat: 1, lon: 2, label: 'home', addl_walk_mins: 2 },
+      decision_point: { lat: 3, lon: 4, label: 'fork', addl_walk_mins: 99 },
+      park_and_ride: { lat: 5, lon: 6, label: 'lot', addl_walk_mins: 5 },
+      parking: { lat: 9, lon: 8, label: 'garage', addl_walk_mins: 4 },
+      destination: { lat: 7, lon: 8, label: 'door', addl_walk_mins: 1 },
+    },
+  };
+  const now = new Date('2026-09-17T12:00:00Z');
+
+  const atFork = await computeOptions(config, 'k', stub, { now });
+  // 2700 drive + 4 garage walk; the fork's walk is never used.
+  assert.equal(atFork.driveThrough.totalSeconds, 2700 + 240);
+  assert.equal(atFork.driveThrough.walkSeconds, 240);
+  // 600 drive + 5 platform + 1500 transit + 1 door.
+  assert.equal(atFork.parkAndRide.totalSeconds, 600 + 300 + 1500 + 60);
+  assert.equal(atFork.parkAndRide.bufferSeconds, 300);
+  assert.equal(atFork.parkAndRide.walkSeconds, 60);
+
+  const fromHome = await computeOptions(config, 'k', stub, { now, from: 'origin' });
+  assert.equal(fromHome.driveThrough.totalSeconds, 120 + 2700 + 240);
+  assert.equal(fromHome.parkAndRide.totalSeconds, 120 + 600 + 300 + 1500 + 60);
+  assert.equal(fromHome.parkAndRide.walkSeconds, 120 + 60);
+});
+
+test('with no parking the drive ends at the destination and takes its walk', async () => {
+  const stub = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    const which = body.travelMode === 'TRANSIT' ? fixture.transit : body.destination.location.latLng.latitude === 7 ? fixture.driveThrough : fixture.driveToParkAndRide;
+    return { ok: true, json: async () => ({ routes: [which] }) };
+  };
+  const config = {
+    route: {
+      decision_point: { lat: 3, lon: 4, label: 'fork', addl_walk_mins: 0 },
+      park_and_ride: { lat: 5, lon: 6, label: 'lot', addl_walk_mins: 5 },
+      parking: null,
+      destination: { lat: 7, lon: 8, label: 'door', addl_walk_mins: 3 },
+    },
+  };
+  const options = await computeOptions(config, 'k', stub);
+  assert.equal(options.driveThrough.totalSeconds, 2700 + 180);
+  assert.equal(options.parkAndRide.totalSeconds, 600 + 300 + 1500 + 180);
 });

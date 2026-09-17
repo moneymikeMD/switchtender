@@ -21,7 +21,14 @@ export const SECRETS = {
   TRANSIT_API_KEY: { required: false, signal: 'rail alerts' },
 };
 
-const PLACES = ['origin', 'decision_point', 'park_and_ride', 'destination'];
+// Every place in [route] has one shape (CMB-33): where it is, what to call it,
+// and minutes on foot added to any leg that ends there. `parking` is the only
+// optional one. The keys are closed: an unknown key is an error naming it, so
+// a renamed or misspelt field cannot silently become a zero.
+export const PLACES = ['origin', 'decision_point', 'park_and_ride', 'parking', 'destination'];
+export const OPTIONAL_PLACES = ['parking'];
+export const PLACE_KEYS = Object.freeze(['lat', 'lon', 'label', 'addl_walk_mins']);
+const RENAMED_PLACE_KEYS = { park_to_platform_minutes: 'addl_walk_mins', walk_to_destination_minutes: 'addl_walk_mins' };
 
 export class ConfigError extends Error {
   constructor(message) {
@@ -43,8 +50,17 @@ function must(obj, path, kind) {
   return value;
 }
 
-function place(raw, name) {
+/** Build one place from `[route.<name>]`. Null for an absent optional place. */
+export function place(raw, name) {
+  if (raw.route?.[name] === undefined && OPTIONAL_PLACES.includes(name)) return null;
   const p = must(raw, `route.${name}`, 'object');
+  for (const key of Object.keys(p)) {
+    if (PLACE_KEYS.includes(key)) continue;
+    const hint = RENAMED_PLACE_KEYS[key] ? ` (renamed to "${RENAMED_PLACE_KEYS[key]}")` : '';
+    throw new ConfigError(
+      `config: route.${name} has unknown key "${key}"${hint}; a place takes ${PLACE_KEYS.join(', ')}`,
+    );
+  }
   const lat = must(raw, `route.${name}.lat`, 'number');
   const lon = must(raw, `route.${name}.lon`, 'number');
   // A coordinate outside these ranges is a transposed lat/lon far more often
@@ -56,23 +72,13 @@ function place(raw, name) {
   if (lon < -180 || lon > 180) {
     throw new ConfigError(`config: route.${name}.lon ${lon} is out of range`);
   }
-  return { lat, lon, label: must(raw, `route.${name}.label`, 'string') };
-}
-
-// Where the car actually stops (CMB-31). Optional: without it the drive ends
-// at the destination and there is no walk. With it, the drive-through leg is
-// routed to the parking spot and the configured walk to the door is added, so
-// both options are measured to the same place.
-function parkingBlock(raw) {
-  if (raw.route?.parking === undefined) return null;
-  const p = place(raw, 'parking');
-  const walk = must(raw, 'route.parking.walk_to_destination_minutes', 'number');
-  if (!Number.isFinite(walk) || walk < 0) {
+  const addl_walk_mins = p.addl_walk_mins ?? 0;
+  if (typeof addl_walk_mins !== 'number' || !Number.isFinite(addl_walk_mins) || addl_walk_mins < 0) {
     throw new ConfigError(
-      `config: route.parking.walk_to_destination_minutes should be zero or more, got ${walk}`,
+      `config: route.${name}.addl_walk_mins should be a number of zero or more, got ${JSON.stringify(addl_walk_mins)}`,
     );
   }
-  return { ...p, walk_to_destination_minutes: walk };
+  return { lat, lon, label: must(raw, `route.${name}.label`, 'string'), addl_walk_mins };
 }
 
 // The verdict log (CMB-11). Optional as a block: a config without [log]
@@ -158,12 +164,6 @@ export function parseConfig(text) {
 
   const route = Object.fromEntries(PLACES.map((n) => [n, place(raw, n)]));
   route.timezone = must(raw, 'route.timezone', 'string');
-  route.park_and_ride.park_to_platform_minutes = must(
-    raw,
-    'route.park_and_ride.park_to_platform_minutes',
-    'number',
-  );
-  route.parking = parkingBlock(raw);
 
   const bbox = {
     min_lon: must(raw, 'incidents.min_lon', 'number'),

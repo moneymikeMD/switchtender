@@ -162,21 +162,25 @@ export const START_POINTS = Object.freeze(['fork', 'origin']);
 /**
  * Turn raw API routes into the two comparable options.
  *
- * @param walkMinutes  minutes from the parking spot to the destination door
- *                     (CMB-31). Folded into the drive-through total so both
- *                     options end at the same place; kept separately so the
- *                     log can tell drive from walk.
+ * Walks (CMB-31, CMB-33) are the `addl_walk_mins` of the place each leg ends
+ * at, in minutes, plus the start place's walk to the car when measuring from
+ * the origin. Each is folded into its option's total so both options end at
+ * the same door, and kept apart so the log can tell driving from walking.
+ *
+ * @param walks.start      before the first leg (origin only)
+ * @param walks.driveEnd   where the drive-through leg stops: parking, else destination
+ * @param walks.platform   park-and-ride, car to platform
+ * @param walks.transitEnd destination, after the transit leg
  */
-export function buildOptions(
-  { driveThrough, driveToParkAndRide, transit },
-  parkToPlatformMinutes,
-  { walkMinutes = 0 } = {},
-) {
-  const bufferSeconds = parkToPlatformMinutes * 60;
+export function buildOptions({ driveThrough, driveToParkAndRide, transit }, walks = {}) {
+  const seconds = (minutes) => Math.round((minutes ?? 0) * 60);
+  const startSeconds = seconds(walks.start);
+  const bufferSeconds = seconds(walks.platform);
   const driveSeconds = parseDuration(driveToParkAndRide.duration);
   const transitSeconds = parseDuration(transit.duration);
+  const transitEndSeconds = seconds(walks.transitEnd);
   const throughDriveSeconds = parseDuration(driveThrough.duration);
-  const walkSeconds = Math.round(walkMinutes * 60);
+  const walkSeconds = startSeconds + seconds(walks.driveEnd);
   return {
     driveThrough: {
       totalSeconds: throughDriveSeconds + walkSeconds,
@@ -191,10 +195,12 @@ export function buildOptions(
         : null,
     },
     parkAndRide: {
-      totalSeconds: driveSeconds + bufferSeconds + transitSeconds,
+      totalSeconds: startSeconds + driveSeconds + bufferSeconds + transitSeconds + transitEndSeconds,
       driveSeconds,
+      // Car to platform. Named for the frozen log column (park_buffer_seconds).
       bufferSeconds,
       transitSeconds,
+      walkSeconds: startSeconds + transitEndSeconds,
       // The drive leg to the park-and-ride is short and its congestion is not
       // the deciding factor, but it is recorded so a jam on the way to the
       // garage is visible rather than silently folded into a total.
@@ -224,7 +230,12 @@ export async function computeOptions(
   const start = from === 'origin' ? origin : fork;
   // With a separate parking spot the car stops there, not at the door.
   const driveTarget = parking ?? destination;
-  const walkMinutes = parking?.walk_to_destination_minutes ?? 0;
+  const walks = {
+    start: from === 'origin' ? origin.addl_walk_mins ?? 0 : 0,
+    driveEnd: driveTarget.addl_walk_mins ?? 0,
+    platform: pnr.addl_walk_mins ?? 0,
+    transitEnd: destination.addl_walk_mins ?? 0,
+  };
 
   const [driveThrough, driveToParkAndRide] = await Promise.all([
     computeRoute(driveRequest(start, driveTarget), DRIVE_FIELDS, { apiKey, fetchImpl }),
@@ -232,7 +243,7 @@ export async function computeOptions(
   ]);
   const platformAt = new Date(
     now.getTime() +
-      (parseDuration(driveToParkAndRide.duration) + pnr.park_to_platform_minutes * 60) * 1000,
+      (walks.start * 60 + parseDuration(driveToParkAndRide.duration) + walks.platform * 60) * 1000,
   );
   const transit = await computeRoute(
     transitRequest(pnr, destination, { departureTime: platformAt.toISOString() }),
@@ -240,11 +251,7 @@ export async function computeOptions(
     { apiKey, fetchImpl },
   );
 
-  const options = buildOptions(
-    { driveThrough, driveToParkAndRide, transit },
-    pnr.park_to_platform_minutes,
-    { walkMinutes },
-  );
+  const options = buildOptions({ driveThrough, driveToParkAndRide, transit }, walks);
   options.measuredFrom = from;
   options.startLabel = start.label ?? null;
   options.parkingLabel = parking?.label ?? null;

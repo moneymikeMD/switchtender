@@ -38,7 +38,7 @@ test('every place comes back with typed coordinates and a label', () => {
     assert.equal(typeof p.lon, 'number', `${name}.lon`);
     assert.ok(p.label.length > 0, `${name}.label`);
   }
-  assert.equal(typeof c.route.park_and_ride.park_to_platform_minutes, 'number');
+  assert.equal(typeof c.route.park_and_ride.addl_walk_mins, 'number');
 });
 
 test('decision thresholds are typed, not strings', () => {
@@ -167,22 +167,49 @@ test('an unknown provider is rejected, and a club id on a ticketing venue is a m
   );
 });
 
-test('[route.parking] is optional; present, it needs a place and a non-negative walk (CMB-31)', () => {
+test('every place has one shape: lat, lon, label, addl_walk_mins defaulting to 0 (CMB-33)', () => {
+  const c = parseConfig(exampleText);
+  for (const name of ['origin', 'decision_point', 'park_and_ride', 'destination']) {
+    const p = c.route[name];
+    assert.deepEqual(Object.keys(p).sort(), ['addl_walk_mins', 'label', 'lat', 'lon'], name);
+    assert.equal(typeof p.addl_walk_mins, 'number');
+  }
+  assert.equal(c.route.park_and_ride.addl_walk_mins, 5);
+  assert.equal(c.route.origin.addl_walk_mins, 0);
+  // Left out entirely is 0, not missing.
+  const bare = exampleText.replace(/^addl_walk_mins = 0\n/m, '');
+  assert.equal(parseConfig(bare).route.origin.addl_walk_mins, 0);
+});
+
+test('[route.parking] is optional and takes the same shape; the example block uncomments cleanly (CMB-31, CMB-33)', () => {
   assert.equal(parseConfig(exampleText).route.parking, null);
 
-  // The example ships the block commented out. Uncommenting it must parse.
-  const enabled = exampleText.replace(/^# (\[route\.parking\]|lat = 42\.3522|lon = -71\.0629|label = "Garage.*|walk_to_destination_minutes = 5)$/gm, '$1');
+  const enabled = exampleText.replace(/^# (\[route\.parking\]|lat = 42\.3522|lon = -71\.0629|label = "Garage.*|addl_walk_mins = 5)$/gm, '$1');
   const parking = parseConfig(enabled).route.parking;
   assert.equal(parking.lat, 42.3522);
   assert.equal(parking.label, 'Garage on the far side of the Common');
-  assert.equal(parking.walk_to_destination_minutes, 5);
+  assert.equal(parking.addl_walk_mins, 5);
+});
 
+test('a walk that is negative or not a number is rejected; the old key names are rejected with the new name', () => {
   assert.throws(
-    () => parseConfig(enabled.replace('walk_to_destination_minutes = 5', 'walk_to_destination_minutes = -1')),
-    /walk_to_destination_minutes should be zero or more/,
+    () => parseConfig(exampleText.replace('addl_walk_mins = 5', 'addl_walk_mins = -1')),
+    /route\.park_and_ride\.addl_walk_mins should be a number of zero or more/,
   );
   assert.throws(
-    () => parseConfig(enabled.replace('walk_to_destination_minutes = 5\n', '')),
-    /missing required key "route.parking.walk_to_destination_minutes"/,
+    () => parseConfig(exampleText.replace('addl_walk_mins = 5', 'addl_walk_mins = "five"')),
+    /route\.park_and_ride\.addl_walk_mins should be a number/,
+  );
+  assert.throws(
+    () => parseConfig(exampleText.replace('addl_walk_mins = 5', 'park_to_platform_minutes = 5')),
+    /route\.park_and_ride has unknown key "park_to_platform_minutes" \(renamed to "addl_walk_mins"\)/,
+  );
+  assert.throws(
+    () => parseConfig(exampleText.replace('label = "Boston Common"', 'label = "Boston Common"\nwalk_to_destination_minutes = 5')),
+    /route\.destination has unknown key "walk_to_destination_minutes" \(renamed to "addl_walk_mins"\)/,
+  );
+  assert.throws(
+    () => parseConfig(exampleText.replace('label = "Boston Common"', 'label = "Boston Common"\ncolour = "green"')),
+    /route\.destination has unknown key "colour"; a place takes lat, lon, label, addl_walk_mins/,
   );
 });

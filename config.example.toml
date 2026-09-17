@@ -19,45 +19,54 @@
 [route]
 timezone = "America/New_York"
 
-# Where the commute starts. Used to compute the approach, not the verdict.
+# Every place below has the same four keys: lat, lon, label, and
+# addl_walk_mins, the minutes on foot added to any leg that ends there.
+# addl_walk_mins defaults to 0 and may be left out. Nothing else is accepted.
+
+# Where the commute starts. Its walk is the one to the car before leaving,
+# counted only when measuring the whole trip with --from origin.
 [route.origin]
 lat = 42.4604
 lon = -71.3489
 label = "Concord town center"
+addl_walk_mins = 0
 
 # The fork. Past this point the two options are no longer interchangeable,
-# so the verdict has to be delivered before it, never at it.
+# so the verdict has to be delivered before it, never at it. No leg ends
+# here, so its walk is never used.
 [route.decision_point]
 lat = 42.4004
 lon = -71.2200
 label = "Route 2 at I-95"
 
-# Where the driver would leave the car to take transit.
+# Where the driver would leave the car to take transit. Its walk is from
+# parking the car to standing on the platform: stairs, fare gates, the garage
+# queue at rush hour. Measure it; do not guess.
 [route.park_and_ride]
 lat = 42.3954
 lon = -71.1425
 label = "Alewife station garage"
-# Minutes from parking the car to standing on the platform. Walking, stairs,
-# fare gates, and the garage queue at rush hour. Measure it; do not guess.
-park_to_platform_minutes = 5
+addl_walk_mins = 5
 
 # Where the commute ends: the door you walk through, not where the car stops.
 # The transit leg is measured to here, and so is the drive once the walk from
-# the parking spot below is added.
+# the parking spot below is added. The transit answer already includes its
+# final walk, so this walk is normally 0.
 [route.destination]
 lat = 42.3550
 lon = -71.0656
 label = "Boston Common"
+addl_walk_mins = 0
 
 # Optional: where the car actually stops when it is not at the destination,
 # such as a cheaper garage a few blocks away. Driving is then routed here and
-# the walk to the destination is added, so both options end at the same door.
-# Leave the table out to drive to the destination itself with no walk.
+# its walk (car to the destination door) is added, so both options end at the
+# same door. Leave the table out to drive to the destination itself.
 # [route.parking]
 # lat = 42.3522
 # lon = -71.0629
 # label = "Garage on the far side of the Common"
-# walk_to_destination_minutes = 5
+# addl_walk_mins = 5
 
 [trigger]
 # How far ahead of the decision point to deliver the verdict. Far enough to

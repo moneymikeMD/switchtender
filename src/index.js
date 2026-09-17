@@ -63,7 +63,7 @@ async function main() {
   if (from === 'origin') console.log(`  measuring from ${route.origin.label} (whole trip)`);
   console.log(
     route.parking
-      ? `  driving to    ${route.parking.label}, then ${route.parking.walk_to_destination_minutes} min walk to ${route.destination.label}`
+      ? `  driving to    ${route.parking.label}, then ${route.parking.addl_walk_mins} min walk to ${route.destination.label}`
       : `  driving to    ${route.destination.label}`,
   );
   console.log(`  or parking at ${route.park_and_ride.label}`);
@@ -99,8 +99,9 @@ async function main() {
   console.log(
     `  keep driving   ${minutes(driveThrough.totalSeconds).padEnd(8)} ${walk}${describeCongestion(driveThrough.congestion)}`,
   );
+  const parkWalk = parkAndRide.walkSeconds > 0 ? ` + ${minutes(parkAndRide.walkSeconds)} walk` : '';
   console.log(
-    `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
+    `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} to platform + ${minutes(parkAndRide.transitSeconds)} transit${parkWalk}`,
   );
   if (verdict.driveArrivalClock) {
     console.log(`  arrive by car  ${verdict.driveArrivalClock}, by train ${verdict.transitArrivalClock}`);
