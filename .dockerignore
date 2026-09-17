@@ -1,0 +1,20 @@
+# Nothing private, nothing that is not runtime, reaches the build context.
+config.toml
+config.*.toml
+!config.example.toml
+.env
+.env.*
+node_modules
+test
+docs
+scripts
+.night-watchman
+.claude
+.git
+.github
+.tokensave
+.serena
+.memorygraph
+*.md
+Dockerfile
+.dockerignore

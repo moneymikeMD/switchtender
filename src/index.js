@@ -1,17 +1,13 @@
-// Entry point.
+// Command-line entry point.
 //
-// Loads configuration, computes the two onward options from the fork, decides
-// between them and prints both the spoken line and the structured verdict.
-// Every field of the verdict is printed because it will be logged (CMB-11) and
-// the rule's starting values are tuned from that log.
+// Loads configuration, runs the shared pipeline (src/engine.js) and prints
+// both the structured verdict and the spoken line. Every field of the verdict
+// is printed because it is logged (CMB-11) and the rule's starting values are
+// tuned from that log. The same pipeline serves HTTP from src/server.js.
 
 import { loadConfig, ConfigError } from './config.js';
-import { computeOptions, RouteError } from './routes.js';
-import { decide, speak } from './verdict.js';
-import { fetchIncidents } from './incidents.js';
-import { logVerdict } from './log.js';
-import { fetchClosures } from './closures.js';
-import { fetchChart } from './chart.js';
+import { RouteError } from './routes.js';
+import { runVerdict } from './engine.js';
 
 const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 
@@ -60,19 +56,9 @@ async function main() {
     );
   }
 
-  // The incident lookup is optional and never throws; it runs alongside the
-  // three routing requests. Without a key it is skipped entirely and the
-  // degraded list already says so.
-  const trafficKey = secrets.keys.TRAFFIC_API_KEY;
-  const incidentsPromise = trafficKey ? fetchIncidents(config, trafficKey) : Promise.resolve(null);
-  // Planned District closures need no key and only the config bounding box,
-  // so they can start now too. Maryland CHART needs the route geometry and
-  // waits for the routing response.
-  const closuresPromise = fetchClosures(config);
-
-  let options;
+  let result;
   try {
-    options = await computeOptions(config, secrets.keys.ROUTES_API_KEY);
+    result = await runVerdict(config);
   } catch (error) {
     if (error instanceof RouteError) {
       // Routing is the required signal, so this is fatal rather than degrading.
@@ -84,6 +70,7 @@ async function main() {
     throw error;
   }
 
+  const { options, incidents, closures, maryland, verdict, spoken, logged } = result;
   const { driveThrough, parkAndRide } = options;
   console.log(`\nFrom ${route.decision_point.label}:`);
   console.log(
@@ -93,11 +80,6 @@ async function main() {
     `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} buffer + ${minutes(parkAndRide.transitSeconds)} transit`,
   );
 
-  const [incidents, closures, maryland] = await Promise.all([
-    incidentsPromise,
-    closuresPromise,
-    fetchChart(driveThrough.points),
-  ]);
   if (incidents) {
     const state = incidents.score === null ? 'unknown' : incidents.unstable ? 'UNSTABLE' : 'steady';
     const count = incidents.count === null ? '' : `, ${incidents.count} incidents in box`;
@@ -114,33 +96,16 @@ async function main() {
       : `  maryland records ${maryland.onRoute} on route of ${maryland.total}`,
   );
 
-  const verdict = decide(options, decision, {
-    degraded: secrets.degraded,
-    incidents,
-    closures,
-    maryland,
-  });
   console.log('\nVerdict:');
   for (const [key, value] of Object.entries(verdict)) {
     console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);
   }
-  // CMB-11. Logging never blocks the verdict; a failure is reported and
-  // swallowed. Its status goes to stderr so that stdout ends with the spoken
-  // line and nothing else: `npm start 2>/dev/null | tail -1 | say` must hear
-  // the verdict, not the log receipt. The sheet id is an address, not a
-  // secret, but it is still not echoed in full.
-  if (config.log.enabled) {
-    // Signals that postdate the frozen HEADER travel as extras and become
-    // trailing columns.
-    const extras = {
-      closures_active: closures.active,
-      closures_source_live: closures.sourceLive,
-      closures_addresses: closures.addresses.join(' | '),
-      maryland_on_route: maryland.onRoute,
-      maryland_total: maryland.total,
-      maryland_descriptions: maryland.descriptions.join(' | '),
-    };
-    const logged = await logVerdict({ now: new Date(), config, options, incidents, verdict, extras });
+
+  // Log status goes to stderr so that stdout ends with the spoken line and
+  // nothing else: `npm start 2>/dev/null | tail -1 | say` must hear the
+  // verdict, not the log receipt. The sheet id is an address, not a secret,
+  // but it is still not echoed in full.
+  if (logged) {
     const tail = config.log.sheet_id.slice(-4);
     console.error(
       logged.ok
@@ -150,7 +115,7 @@ async function main() {
   }
 
   // Last line of stdout, always: the sentence the driver hears.
-  console.log(`\n${speak(verdict)}`);
+  console.log(`\n${spoken}`);
 }
 
 main().catch((error) => {

@@ -1,0 +1,19 @@
+# Source upload for `gcloud run deploy --source`. Same shape as .dockerignore:
+# the real config and any env file never leave the laptop.
+config.toml
+config.*.toml
+!config.example.toml
+.env
+.env.*
+node_modules
+test
+docs
+scripts
+.night-watchman
+.claude
+.git
+.github
+.tokensave
+.serena
+.memorygraph
+*.md
