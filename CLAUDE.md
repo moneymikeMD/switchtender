@@ -12,7 +12,7 @@ Node 24 (current LTS), ESM, one runtime dependency (`smol-toml`). Tests use `nod
 
 ```
 npm ci
-npm test          # 26 tests, no network
+npm test          # no network
 cp config.example.toml config.toml
 ROUTES_API_KEY=... npm start
 ```
@@ -28,6 +28,15 @@ ROUTES_API_KEY=... npm start
 - **Resume notes:** `docs/handoffs/`, newest first.
 - **v1:** a separate private repository. It stays private forever because its
   history holds the owner's home coordinates. Nothing here depends on it.
+
+## How work happens here
+
+Fast code production with tests. This repo does not run the night-watchman
+operating model: no session-start, wave trail, spec-reviewer or
+script-reviewer here (owner decision 2026-09-16). A session reads memory-graph
+and this file, dispatches one plain worktree subagent per ticket with disjoint
+file ownership, reviews the diff, merges, runs `npm test` and a live
+`npm start`, closes the Jira ticket with a comment, pushes.
 
 ## Rules
 
