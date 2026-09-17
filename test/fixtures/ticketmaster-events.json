@@ -1,0 +1,512 @@
+{
+  "_embedded": {
+    "events": [
+      {
+        "name": "The Beltway Brawl VII",
+        "type": "event",
+        "id": "17A8v0G6CMEiGHY",
+        "test": false,
+        "url": "https://www.ticketmaster.com/the-beltway-brawl-vii-washington-district-of-columbia-09-16-2026/event/150064EDE7B0CF30",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-16",
+            "localTime": "19:30:00",
+            "dateTime": "2026-09-16T23:30:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nE",
+              "name": "Sports"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAdA",
+              "name": "Boxing"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "JUNGLE - World Tour 2026",
+        "type": "event",
+        "id": "1A4ZkowGkeBoawk",
+        "test": false,
+        "url": "https://www.ticketmaster.com/jungle-world-tour-2026-washington-district-of-columbia-09-17-2026/event/15006472BA449C86",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-17",
+            "localTime": "20:00:00",
+            "dateTime": "2026-09-18T00:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAee",
+              "name": "R&B"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "DC Power FC vs. Tampa Bay Sun FC",
+        "type": "event",
+        "id": "17A8v0G6urMK6c1",
+        "test": false,
+        "url": "https://www.ticketmaster.com/dc-power-fc-vs-tampa-bay-washington-district-of-columbia-09-18-2026/event/150064D7B74C7B4A",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-18",
+            "localTime": "19:00:00",
+            "dateTime": "2026-09-18T23:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nE",
+              "name": "Sports"
+            },
+            "genre": {
+              "id": "KnvZfZ7vA7E",
+              "name": "Soccer"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A8Q0",
+              "name": "Audi Field",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "JUNGLE - World Tour 2026",
+        "type": "event",
+        "id": "1A4ZkoyGkd6A_RK",
+        "test": false,
+        "url": "https://www.ticketmaster.com/jungle-world-tour-2026-washington-district-of-columbia-09-18-2026/event/15006479C7159BD3",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-18",
+            "localTime": "20:00:00",
+            "dateTime": "2026-09-19T00:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAee",
+              "name": "R&B"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Miel San Marcos & Gateway Worship",
+        "type": "event",
+        "id": "17A8v0G653cuaga",
+        "test": false,
+        "url": "https://www.ticketmaster.com/miel-san-marcos-gateway-worship-washington-district-of-columbia-09-19-2026/event/150064B4AD349D49",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-19",
+            "localTime": "19:00:00",
+            "dateTime": "2026-09-19T23:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAJ6",
+              "name": "Latin"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "D.C. United vs Charlotte FC",
+        "type": "event",
+        "id": "1A4ZkCKGkdaSQFv",
+        "test": false,
+        "url": "https://www.ticketmaster.com/dc-united-vs-charlotte-fc-washington-district-of-columbia-09-19-2026/event/15006393C9CDA201",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-19",
+            "localTime": "19:30:00",
+            "dateTime": "2026-09-19T23:30:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nE",
+              "name": "Sports"
+            },
+            "genre": {
+              "id": "KnvZfZ7vA7E",
+              "name": "Soccer"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A8Q0",
+              "name": "Audi Field",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Malcolm Todd: Do That Again Tour",
+        "type": "event",
+        "id": "17A8v0G6G9vZmrI",
+        "test": false,
+        "url": "https://www.ticketmaster.com/malcolm-todd-do-that-again-tour-washington-district-of-columbia-09-20-2026/event/150064C5C102E7A8",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-20",
+            "localTime": "20:00:00",
+            "dateTime": "2026-09-21T00:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAev",
+              "name": "Pop"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dermot Kennedy: The Weight of the Woods Tour",
+        "type": "event",
+        "id": "1A4ZkoyGkd9mlee",
+        "test": false,
+        "url": "https://www.ticketmaster.com/dermot-kennedy-the-weight-of-the-washington-district-of-columbia-09-21-2026/event/15006479D7BAB082",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-21",
+            "localTime": "20:00:00",
+            "dateTime": "2026-09-22T00:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAeA",
+              "name": "Rock"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "DC Power FC vs. Fort Lauderdale United FC",
+        "type": "event",
+        "id": "17A8v0G6urz2EYs",
+        "test": false,
+        "url": "https://www.ticketmaster.com/dc-power-fc-vs-fort-lauderdale-washington-district-of-columbia-09-22-2026/event/150064D7B83E7C31",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-22",
+            "localTime": "11:00:00",
+            "dateTime": "2026-09-22T15:00:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nE",
+              "name": "Sports"
+            },
+            "genre": {
+              "id": "KnvZfZ7vA7E",
+              "name": "Soccer"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A8Q0",
+              "name": "Audi Field",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Role Model Presents: Chuck On Tour",
+        "type": "event",
+        "id": "17A8v0G6GTxzHaJ",
+        "test": false,
+        "url": "https://www.ticketmaster.com/role-model-presents-chuck-on-tour-washington-district-of-columbia-09-22-2026/event/150064CFE2E3C266",
+        "dates": {
+          "start": {
+            "localDate": "2026-09-22",
+            "localTime": "19:30:00",
+            "dateTime": "2026-09-22T23:30:00Z",
+            "dateTBD": false,
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": {
+            "code": "onsale"
+          },
+          "spanMultipleDays": false
+        },
+        "classifications": [
+          {
+            "primary": true,
+            "segment": {
+              "id": "KZFzniwnSyZfZ7v7nJ",
+              "name": "Music"
+            },
+            "genre": {
+              "id": "KnvZfZ7vAev",
+              "name": "Pop"
+            }
+          }
+        ],
+        "_embedded": {
+          "venues": [
+            {
+              "id": "KovZ917A3Y7",
+              "name": "The Anthem",
+              "city": {
+                "name": "Washington"
+              },
+              "state": {
+                "stateCode": "DC"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "page": {
+    "size": 100,
+    "totalElements": 10,
+    "totalPages": 1,
+    "number": 0
+  }
+}
