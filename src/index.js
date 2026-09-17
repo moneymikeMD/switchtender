@@ -124,11 +124,11 @@ async function main() {
   for (const [key, value] of Object.entries(verdict)) {
     console.log(`  ${key.padEnd(22)} ${Array.isArray(value) ? value.join('; ') : value}`);
   }
-  console.log(`\n${speak(verdict)}`);
-
-  // CMB-11. Logging never blocks the verdict, so it runs after the spoken
-  // line and reports in one line. The sheet id is an address, not a secret,
-  // but it is still not echoed in full.
+  // CMB-11. Logging never blocks the verdict; a failure is reported and
+  // swallowed. Its status goes to stderr so that stdout ends with the spoken
+  // line and nothing else: `npm start 2>/dev/null | tail -1 | say` must hear
+  // the verdict, not the log receipt. The sheet id is an address, not a
+  // secret, but it is still not echoed in full.
   if (config.log.enabled) {
     // Signals that postdate the frozen HEADER travel as extras and become
     // trailing columns.
@@ -142,12 +142,15 @@ async function main() {
     };
     const logged = await logVerdict({ now: new Date(), config, options, incidents, verdict, extras });
     const tail = config.log.sheet_id.slice(-4);
-    console.log(
+    console.error(
       logged.ok
         ? `logged to sheet ...${tail} tab ${config.log.sheet_tab}`
         : `log failed: ${logged.error}`,
     );
   }
+
+  // Last line of stdout, always: the sentence the driver hears.
+  console.log(`\n${speak(verdict)}`);
 }
 
 main().catch((error) => {
