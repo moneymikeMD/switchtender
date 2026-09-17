@@ -39,30 +39,33 @@ values from the file; nothing in this document or the repo carries them.
 
 ## Import instead of building by hand
 
-`docs/switchtender.macro` is the whole macro as a MacroDroid export, built
-against MacroDroid's own AI schema (v1.0, app 5.60+) and installed on the
-owner's phone through remote.macrodroid.com on 2026-09-16. Two ways in:
+`docs/switchtender.macro` is the whole macro as a MacroDroid export. It began
+as a file generated against MacroDroid's own AI schema (v1.0, app 5.60+),
+was installed on the owner's phone through remote.macrodroid.com on
+2026-09-16, edited there, and exported back; the committed file is that
+export with run-time values blanked. Two ways in:
 
 - **Web:** sign in at https://remote.macrodroid.com, connect the phone,
   Macros tab, `Import macro / category…`, pick the file.
 - **Phone:** copy the file to the phone and open it; MacroDroid imports it.
 
-Then, in the app, open the macro and finish two things the file cannot carry:
+The macro keeps its two deployment-specific values in local variables so the
+body itself carries nothing private:
 
-1. **Geofence.** The trigger names a zone called `Switchtender trigger` that
-   does not exist yet. Tap the trigger, pick or create that zone, drop the pin
-   on the inbound road four miles before the fork, radius 400 m.
-2. **Secret.** The HTTP Request header `X-Switchtender-Key` holds the literal
-   `PASTE_SECRET_HERE`. The owner's install replaced it with `{v=st_key}`, a
-   global string variable holding the value of 1Password item `Switchtender
-   shared secret` (vault `Software_Development`, field `credential`), which
-   keeps the secret out of the macro body. Mark that variable **secure** in
-   MacroDroid: the system log otherwise prints every value change in plain
-   text. The file is public; the secret never is.
+- `st_url` is prefilled with the public service URL. Change it if the service
+  moves.
+- `st_key` is empty. On the phone, set it to the value of 1Password item
+  `Switchtender shared secret` (vault `Software_Development`, field
+  `credential`). MacroDroid's system log prints variable changes in plain
+  text, so mark the variable secure if the app offers it.
 
-Everything else (weekday and time constraints, HTTP request, JSON parse,
-speech on the Music stream, failure branch) is already in place. The manual
-recipe below is the same macro, step by step, for reference or for Tasker.
+Then tap the Geofence trigger, create a zone, drop the pin on the inbound
+road four miles before the fork, radius 400 m. The export deliberately
+carries no zone: a geofence describes the commute. Enable the macro and Run
+it once at your desk on Bluetooth. Everything else (weekday and time
+constraints, HTTP request, JSON parse, speech on the Music stream, failure
+branch) is already in place. The manual recipe below is the same macro,
+step by step, for reference or for Tasker.
 
 ## Recipe (MacroDroid)
 
