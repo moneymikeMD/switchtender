@@ -1,0 +1,141 @@
+{
+  "macroExportVersion": 1,
+  "globalVariables": [],
+  "macro": {
+    "m_name": "Switchtender",
+    "m_description": "Four miles before the fork on weekday mornings, asks the switchtender service whether to keep driving or park and ride, and speaks the verdict over the car audio.",
+    "m_category": "Commute",
+    "m_enabled": true,
+    "m_completed": true,
+    "m_GUID": 0,
+    "aiGenerated": 1,
+    "m_isOrCondition": false,
+    "localVariables": [
+      { "m_name": "st_code", "m_type": 1, "m_intValue": 0, "isLocalVar": true },
+      { "m_name": "st_body", "m_type": 2, "m_stringValue": "", "isLocalVar": true },
+      { "m_name": "st_json", "m_type": 4, "dictionary": { "entries": [], "isArray": false }, "isLocalVar": true }
+    ],
+    "m_triggerList": [
+      {
+        "m_classType": "GeofenceTrigger",
+        "m_SIGUID": 0,
+        "m_enterArea": true,
+        "m_triggerFromUnknown": false,
+        "m_geofenceId": "Switchtender trigger",
+        "m_geofenceUpdateRateMinutes": 1,
+        "m_comment": "Pick the geofence: drop the pin on the inbound road four miles before the fork ([route.decision_point] minus [trigger] lead_miles in config.toml). Radius 400 m."
+      }
+    ],
+    "m_constraintList": [
+      {
+        "m_classType": "DayOfWeekConstraint",
+        "m_SIGUID": 0,
+        "m_daysOfWeek": [false, true, true, true, true, true, false]
+      },
+      {
+        "m_classType": "TimeOfDayConstraint",
+        "m_SIGUID": 0,
+        "m_startHour": 5,
+        "m_startMinute": 30,
+        "m_endHour": 10,
+        "m_endMinute": 0
+      }
+    ],
+    "m_actionList": [
+      {
+        "m_classType": "HttpRequestAction",
+        "m_SIGUID": 0,
+        "m_comment": "Replace PASTE_SECRET_HERE with the value of 1Password item 'Switchtender shared secret' (Software_Development / credential).",
+        "requestConfig": {
+          "requestType": 0,
+          "urlToOpen": "https://switchtender-678283319848.us-east4.run.app/verdict",
+          "requestTimeOutSeconds": 25,
+          "maxTotalDurationSeconds": 30,
+          "contentType": "",
+          "contentBodySource": 0,
+          "contentBodyText": "",
+          "blockNextAction": true,
+          "saveReturnCodeToVariable": true,
+          "returnCodeVariableName": "st_code",
+          "saveReturnHeadersToVariable": false,
+          "saveResponseType": 1,
+          "responseVariableName": "st_body",
+          "allowAnyCertificate": false,
+          "followRedirects": true,
+          "basicAuthEnabled": false,
+          "headerParams": [
+            { "paramName": "X-Switchtender-Key", "paramValue": "PASTE_SECRET_HERE" }
+          ],
+          "queryParams": [],
+          "prettifyJson": false
+        }
+      },
+      {
+        "m_classType": "IfConditionAction",
+        "m_SIGUID": 0,
+        "m_isOrCondition": false,
+        "m_constraintList": [
+          {
+            "m_classType": "MacroDroidVariableConstraint",
+            "m_SIGUID": 0,
+            "m_variable": { "m_name": "st_code", "m_type": 1, "isLocalVar": true },
+            "m_intValue": 200,
+            "m_intGreaterThan": false,
+            "m_intLessThan": false,
+            "m_intNotEqual": false,
+            "m_intCompareVariable": false
+          },
+          {
+            "m_classType": "MacroDroidVariableConstraint",
+            "m_SIGUID": 0,
+            "m_variable": { "m_name": "st_body", "m_type": 2, "isLocalVar": true },
+            "m_stringValue": "",
+            "m_stringComparisonType": 0,
+            "m_stringEqual": false,
+            "enableRegex": false,
+            "checkCase": false
+          }
+        ]
+      },
+      {
+        "m_classType": "JsonParseAction",
+        "m_SIGUID": 0,
+        "stringVarName": "st_body",
+        "dictionaryVarName": "st_json",
+        "parseColors": false
+      },
+      {
+        "m_classType": "SpeakTextAction",
+        "m_SIGUID": 0,
+        "m_textToSay": "{lv=st_json}[spoken]",
+        "m_pitch": 1.0,
+        "m_speed": 1.0,
+        "m_queue": false,
+        "m_specifyAudioStream": true,
+        "m_audioStream": 3,
+        "m_waitToFinish": true,
+        "m_readNumbersIndividually": false
+      },
+      {
+        "m_classType": "ElseAction",
+        "m_SIGUID": 0
+      },
+      {
+        "m_classType": "SpeakTextAction",
+        "m_SIGUID": 0,
+        "m_textToSay": "Switchtender lookup failed",
+        "m_pitch": 1.0,
+        "m_speed": 1.0,
+        "m_queue": false,
+        "m_specifyAudioStream": true,
+        "m_audioStream": 3,
+        "m_waitToFinish": true,
+        "m_readNumbersIndividually": false
+      },
+      {
+        "m_classType": "EndIfAction",
+        "m_SIGUID": 0
+      }
+    ]
+  }
+}

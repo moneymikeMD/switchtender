@@ -37,6 +37,30 @@ values from the file; nothing in this document or the repo carries them.
 4. Settings > Apps > MacroDroid > Notifications: allow, so its foreground
    service is not killed.
 
+## Import instead of building by hand
+
+`docs/switchtender.macro` is the whole macro as a MacroDroid export, built
+against MacroDroid's own AI schema (v1.0, app 5.60+) and installed on the
+owner's phone through remote.macrodroid.com on 2026-09-16. Two ways in:
+
+- **Web:** sign in at https://remote.macrodroid.com, connect the phone,
+  Macros tab, `Import macro / category…`, pick the file.
+- **Phone:** copy the file to the phone and open it; MacroDroid imports it.
+
+Then, in the app, open the macro and finish two things the file cannot carry:
+
+1. **Geofence.** The trigger names a zone called `Switchtender trigger` that
+   does not exist yet. Tap the trigger, pick or create that zone, drop the pin
+   on the inbound road four miles before the fork, radius 400 m.
+2. **Secret.** The HTTP Request header `X-Switchtender-Key` holds the literal
+   `PASTE_SECRET_HERE`. Replace it with the value of 1Password item
+   `Switchtender shared secret` (vault `Software_Development`, field
+   `credential`). The file is public; the secret never is.
+
+Everything else (weekday and time constraints, HTTP request, JSON parse,
+speech on the Music stream, failure branch) is already in place. The manual
+recipe below is the same macro, step by step, for reference or for Tasker.
+
 ## Recipe (MacroDroid)
 
 1. Add Macro. Name it `Switchtender`.
