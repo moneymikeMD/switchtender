@@ -25,9 +25,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - SG04823"
-      ],
+      "participants": [],
       "source": "Other",
       "startDateTime": 1787322899000,
       "trafficAlert": false,
@@ -60,9 +58,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 04455SG"
-      ],
+      "participants": [],
       "source": "Other",
       "startDateTime": 1789047439000,
       "trafficAlert": false,
@@ -106,7 +102,7 @@
       "name": "Incident @ MD 193 EAST AT PINEY BRANCH RD",
       "opCenter": "SOC",
       "other": "",
-      "participantOnScene": true,
+      "participantOnScene": "",
       "participants": [],
       "source": "Other",
       "startDateTime": 1789551181000,
@@ -140,9 +136,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 03709SG no AVL"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1787140227000,
       "trafficAlert": false,
@@ -186,7 +180,7 @@
       "name": "Incident @ MD 650 NORTH AT QUEBEC ST",
       "opCenter": "TOC3",
       "other": "",
-      "participantOnScene": true,
+      "participantOnScene": "",
       "participants": [],
       "source": "State Highway Administration",
       "startDateTime": 1789588359000,
@@ -220,9 +214,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - SG27158 no AVL"
-      ],
+      "participants": [],
       "source": "Other",
       "startDateTime": 1787581289000,
       "trafficAlert": false,
@@ -377,9 +369,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 06556SG"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1789167879000,
       "trafficAlert": false,
@@ -449,9 +439,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 05789SG"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1788542457000,
       "trafficAlert": false,
@@ -484,9 +472,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 01328SG"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1788880323000,
       "trafficAlert": false,
@@ -519,9 +505,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 06556SG"
-      ],
+      "participants": [],
       "source": "Local Police",
       "startDateTime": 1788537159000,
       "trafficAlert": false,
@@ -554,9 +538,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 06556SG"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1788359149000,
       "trafficAlert": false,
@@ -592,10 +574,8 @@
       "name": "Action Event @ MD 5 (BRANCH AVE (SB/L)) @ NO NAME [Opticom Fire Pre-Emption Signal]",
       "opCenter": "SOC",
       "other": "",
-      "participantOnScene": true,
-      "participants": [
-        "SHA Signal Ops Unit - 06555SG"
-      ],
+      "participantOnScene": "",
+      "participants": [],
       "source": "CHART Unit",
       "startDateTime": 1789150132000,
       "trafficAlert": false,
@@ -628,10 +608,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - SG80789",
-        "SHA Signal Ops Unit - 06553SG"
-      ],
+      "participants": [],
       "source": "Local Police",
       "startDateTime": 1788122005000,
       "trafficAlert": false,
@@ -664,10 +641,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - SG04823",
-        "SHA Signal Ops Unit - SG27158 no AVL"
-      ],
+      "participants": [],
       "source": "Citizen",
       "startDateTime": 1788633496000,
       "trafficAlert": false,
@@ -704,9 +678,7 @@
       "opCenter": "SOC",
       "other": "",
       "participantOnScene": false,
-      "participants": [
-        "SHA Signal Ops Unit - 05789SG"
-      ],
+      "participants": [],
       "source": "Other",
       "startDateTime": 1788363013000,
       "trafficAlert": false,

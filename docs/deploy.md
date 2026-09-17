@@ -83,5 +83,6 @@ curl -s --max-time 25 \
 ```
 
 Response: `{ "spoken": "...", "verdict": {...}, "computedAt": "..." }`. Speak
-`spoken`. A 503 means routing failed and there is no verdict; say nothing.
-A 401 means the key is wrong.
+`spoken`. A 503 means routing failed and there is no verdict; the phone says
+"Switchtender lookup failed" (see docs/phone.md) so silence is never mistaken
+for a missed trigger. A 401 means the key is wrong.
