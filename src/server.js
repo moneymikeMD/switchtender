@@ -95,7 +95,9 @@ export function createServer({
       logger(`${req.method} ${url.pathname} ${res.statusCode} ${ms.toFixed(0)}ms`);
     });
 
-    if (url.pathname === '/healthz') {
+    // /health, not /healthz: Cloud Run's frontend answers /healthz itself with
+    // an HTML 404 and the request never reaches the container.
+    if (url.pathname === '/health') {
       send(res, 200, 'ok', 'text/plain');
       return;
     }
@@ -136,7 +138,9 @@ export function createServer({
 }
 
 function main() {
-  const secret = process.env[SECRET_ENV];
+  // Trimmed: Secret Manager hands over exactly the bytes it was given, and a
+  // shell pipeline usually gives it one newline too many.
+  const secret = (process.env[SECRET_ENV] ?? '').trim();
   if (!secret) {
     console.error(`switchtender: ${SECRET_ENV} is not set; refusing to start`);
     process.exit(1);

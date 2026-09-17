@@ -17,7 +17,7 @@
 # --allow-unauthenticated is deliberate. The caller is a phone shortcut that
 # cannot mint a Google identity token, so Cloud Run's IAM gate is off and the
 # X-Switchtender-Key header, compared in constant time by src/server.js, is
-# the authentication. Nothing is served without it except /healthz.
+# the authentication. Nothing is served without it except /health.
 
 set -euo pipefail
 
@@ -61,6 +61,12 @@ gcloud services enable \
 
 secret_exists() { gcloud secrets describe "$1" --quiet >/dev/null 2>&1; }
 
+# op read and openssl both end their output with a newline. Stored as-is, the
+# container sees a 65-byte shared secret while the phone sends 64, and every
+# API key carries a stray byte. Strip line endings before anything reaches
+# Secret Manager. Values are never echoed.
+strip_newlines() { tr -d '\r\n'; }
+
 # Create a secret from stdin if absent. Prints nothing about the value.
 create_secret_from_stdin() {
   local name="$1"
@@ -69,7 +75,7 @@ create_secret_from_stdin() {
     log "secret $name exists, keeping current version"
   else
     log "creating secret $name"
-    gcloud secrets create "$name" --replication-policy=automatic --data-file=- --quiet
+    strip_newlines | gcloud secrets create "$name" --replication-policy=automatic --data-file=- --quiet
   fi
 }
 
@@ -78,10 +84,10 @@ add_secret_version_from_stdin() {
   local name="$1"
   if secret_exists "$name"; then
     log "adding a version to secret $name"
-    gcloud secrets versions add "$name" --data-file=- --quiet
+    strip_newlines | gcloud secrets versions add "$name" --data-file=- --quiet
   else
     log "creating secret $name"
-    gcloud secrets create "$name" --replication-policy=automatic --data-file=- --quiet
+    strip_newlines | gcloud secrets create "$name" --replication-policy=automatic --data-file=- --quiet
   fi
 }
 
@@ -172,4 +178,4 @@ gcloud run deploy "$SERVICE" \
 
 url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 log "deployed: ${url}"
-log "check: curl -s -o /dev/null -w '%{http_code}\n' ${url}/healthz"
+log "check: curl -s -o /dev/null -w '%{http_code}\n' ${url}/health"

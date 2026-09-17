@@ -5,7 +5,7 @@
 zero and is called twice a weekday. Cloud Run's own IAM gate is off
 (`--allow-unauthenticated`) because a phone shortcut cannot mint a Google
 identity token; the `X-Switchtender-Key` header, compared in constant time, is
-the authentication. `/healthz` is the only route served without it.
+the authentication. `/health` is the only route served without it.
 
 ## Deploy
 

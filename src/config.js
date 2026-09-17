@@ -167,7 +167,9 @@ export function loadSecrets(env = process.env) {
   const keys = {};
   const degraded = [];
   for (const [name, { required, signal }] of Object.entries(SECRETS)) {
-    const value = env[name];
+    // Trimmed: a secret manager or a shell pipeline can leave a trailing
+    // newline on a value, and an API key with a stray byte is a wrong key.
+    const value = typeof env[name] === 'string' ? env[name].trim() : env[name];
     if (value) {
       keys[name] = value;
     } else if (required) {

@@ -38,9 +38,9 @@ test('the server refuses to build without a secret', () => {
   assert.throws(() => createServer({ config, secret: undefined }), /SWITCHTENDER_SHARED_SECRET/);
 });
 
-test('/healthz answers 200 without a key', async () => {
+test('/health answers 200 without a key', async () => {
   const { base } = await start();
-  const res = await fetch(`${base}/healthz`);
+  const res = await fetch(`${base}/health`);
   assert.equal(res.status, 200);
   assert.equal(await res.text(), 'ok');
 });
