@@ -107,7 +107,7 @@
       {
         "m_classType": "SpeakTextAction",
         "m_SIGUID": 0,
-        "m_textToSay": "{lv=st_json}[spoken]",
+        "m_textToSay": "{lv=st_json[spoken]}",
         "m_pitch": 1.0,
         "m_speed": 1.0,
         "m_queue": false,

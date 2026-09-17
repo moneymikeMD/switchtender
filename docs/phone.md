@@ -53,9 +53,12 @@ Then, in the app, open the macro and finish two things the file cannot carry:
    does not exist yet. Tap the trigger, pick or create that zone, drop the pin
    on the inbound road four miles before the fork, radius 400 m.
 2. **Secret.** The HTTP Request header `X-Switchtender-Key` holds the literal
-   `PASTE_SECRET_HERE`. Replace it with the value of 1Password item
-   `Switchtender shared secret` (vault `Software_Development`, field
-   `credential`). The file is public; the secret never is.
+   `PASTE_SECRET_HERE`. The owner's install replaced it with `{v=st_key}`, a
+   global string variable holding the value of 1Password item `Switchtender
+   shared secret` (vault `Software_Development`, field `credential`), which
+   keeps the secret out of the macro body. Mark that variable **secure** in
+   MacroDroid: the system log otherwise prints every value change in plain
+   text. The file is public; the secret never is.
 
 Everything else (weekday and time constraints, HTTP request, JSON parse,
 speech on the Music stream, failure branch) is already in place. The manual
