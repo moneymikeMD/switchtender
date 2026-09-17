@@ -11,6 +11,10 @@ test('--from origin selects the whole-trip estimate; the default is the fork (CM
   assert.deepEqual(parseArgs([]), { from: 'fork' });
   assert.deepEqual(parseArgs(['--from', 'fork']), { from: 'fork' });
   assert.deepEqual(parseArgs(['--from', 'origin']), { from: 'origin' });
+  assert.deepEqual(parseArgs(['--from=origin']), { from: 'origin' });
   assert.throws(() => parseArgs(['--from', 'garage']), ConfigError);
   assert.throws(() => parseArgs(['--from']), ConfigError);
+  // An argument the CLI does not know is an error, never a silent fork.
+  assert.throws(() => parseArgs(['--form', 'origin']), /unknown argument "--form"/);
+  assert.throws(() => parseArgs(['origin']), ConfigError);
 });

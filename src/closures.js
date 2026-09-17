@@ -5,8 +5,8 @@
 // is booked shut for the next four months is a reason to trust the drive
 // estimate less, even on a morning when nothing has gone wrong yet.
 //
-// Provider: the DDOT TOPS ArcGIS FeatureServer (CMB-23). No key, supports an
-// envelope geometry filter. The "Active" layers are 10 (construction permits)
+// Provider: the DDOT TOPS ArcGIS FeatureServer (CMB-23). No key. The
+// "Active" layers are 10 (construction permits)
 // and 11 (occupancy permits); layers 0 and 1 carry history back to 2010 and
 // are not used.
 //
@@ -44,11 +44,20 @@
 // is the on-route count when route geometry is available.
 //
 // Geometry, verified live 2026-09-16: the layer's default output spatial
-// reference is Web Mercator (wkid 102100) even for a WGS84 envelope query, so
-// the request asks for outSR=4326. With that, geometry.x is longitude and
+// reference is Web Mercator (wkid 102100) even for a WGS84 query, so the
+// request asks for outSR=4326. With that, geometry.x is longitude and
 // geometry.y is latitude.
+//
+// Why no server-side envelope. The ArcGIS envelope filter on layer 11 cost
+// 6 to 7 seconds per query against a District-sized box (measured 2026-09-17)
+// and returned the same 115 features as the bare where clause, which answers
+// in a third of a second. Every record carries a point, so the bounding box
+// is applied here, client side, and the box query no longer sits on the
+// driver's wait. exceededTransferLimit is checked so a page cut short by the
+// server's record cap is unknown rather than a short count.
 
-import { haversineMetres } from './polyline.js';
+import { getJson } from './http.js';
+import { nearPolyline } from './polyline.js';
 
 const ENDPOINT = 'https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/FeatureServer';
 
@@ -96,21 +105,34 @@ function checkLayer(layer) {
   return LAYERS[layer];
 }
 
-/**
- * Build a FeatureServer query for the configured bounding box.
- *
- * Envelope geometry in WGS84 (inSR 4326), intersecting. Layer 11 adds the
- * road-closed clause; layer 10 has no such field and gets the issued clause
- * alone. Point geometry comes back in WGS84 (outSR 4326) for route matching;
- * the address stays the spoken location.
- */
-export function closuresRequest(bbox, layer = LIVENESS_LAYER) {
-  const def = checkLayer(layer);
+/** Throw unless the box has all four sides. The box is applied client side; see the header. */
+export function checkBox(bbox) {
   for (const k of ['min_lon', 'min_lat', 'max_lon', 'max_lat']) {
     if (typeof bbox?.[k] !== 'number') {
       throw new ClosureError(`closures: bounding box is missing "${k}"`);
     }
   }
+  return bbox;
+}
+
+/** True when the record has coordinates and they fall inside the box. Unplaceable is outside. */
+export function inBox(record, bbox) {
+  if (record?.lat == null || record?.lon == null) return false;
+  return (
+    record.lon >= bbox.min_lon && record.lon <= bbox.max_lon &&
+    record.lat >= bbox.min_lat && record.lat <= bbox.max_lat
+  );
+}
+
+/**
+ * Build a FeatureServer query for one Active layer. No spatial filter (see
+ * the header). Layer 11 adds the road-closed clause; layer 10 has no such
+ * field and gets the issued clause alone. Point geometry comes back in WGS84
+ * (outSR 4326) for the box test and route matching; the address stays the
+ * spoken location.
+ */
+export function closuresRequest(layer = LIVENESS_LAYER) {
+  const def = checkLayer(layer);
   const where = def.closedField ? `${def.closedField} = 'Y' AND ${ISSUED}` : ISSUED;
   const outFields = def.closedField ? [...COMMON_FIELDS, def.closedField] : COMMON_FIELDS;
   return {
@@ -118,16 +140,6 @@ export function closuresRequest(bbox, layer = LIVENESS_LAYER) {
     params: {
       f: 'json',
       where,
-      geometry: JSON.stringify({
-        xmin: bbox.min_lon,
-        ymin: bbox.min_lat,
-        xmax: bbox.max_lon,
-        ymax: bbox.max_lat,
-        spatialReference: { wkid: 4326 },
-      }),
-      geometryType: 'esriGeometryEnvelope',
-      inSR: '4326',
-      spatialRel: 'esriSpatialRelIntersects',
       outFields: outFields.join(','),
       returnGeometry: 'true',
       outSR: '4326',
@@ -157,9 +169,12 @@ export function livenessRequest(layer = LIVENESS_LAYER) {
   };
 }
 
+// Epoch milliseconds, or null. An empty string is absent, not 1970: Number('')
+// is 0, which would make a dateless permit effective since the epoch.
 const epochMs = (value) => {
+  if (value == null || value === '') return null;
   const n = Number(value);
-  return value == null || !Number.isFinite(n) ? null : n;
+  return Number.isFinite(n) ? n : null;
 };
 
 // A coordinate is only a coordinate if it is a finite number. Anything else
@@ -250,21 +265,13 @@ export function spokenAddress(address) {
 }
 
 /**
- * True when the permit lies within radiusMetres of any polyline vertex.
- *
- * Point-to-vertex distance, not point-to-segment, for the same reason as
- * chart.js: the polyline is dense enough that the radius absorbs the gap.
- * A permit with no coordinates is never on the route (unknown, not near).
- * Deliberately not imported from chart.js so the two signal modules stay
- * independent of each other.
+ * True when the permit lies within radiusMetres of the drive polyline
+ * (segments included; see polyline.nearPolyline). A permit with no
+ * coordinates is never on the route: unknown is not near.
  */
 export function nearRoute(points, record, radiusMetres = DEFAULT_RADIUS_METRES) {
-  if (!Array.isArray(points) || record?.lat == null || record?.lon == null) return false;
-  const here = [record.lat, record.lon];
-  for (const point of points) {
-    if (haversineMetres(point, here) <= radiusMetres) return true;
-  }
-  return false;
+  if (record?.lat == null || record?.lon == null) return false;
+  return nearPolyline(points, [record.lat, record.lon], radiusMetres);
 }
 
 const UNKNOWN_REASON = 'planned closures unavailable';
@@ -273,11 +280,14 @@ export const STALE_REASON = 'planned closures source stale';
 
 export const NO_ROUTE_REASON = 'planned closures counted District-wide: route geometry unavailable';
 
-function unknown(reason) {
+/** The unknown shape: every count null, the reason naming the failure class. */
+export function unknownClosures(reason) {
   return {
     active: null, total: null, addresses: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null,
   };
 }
+
+const unknown = unknownClosures;
 
 // Stale is a distinct outcome from unavailable: the feed answered, and its
 // answer disqualifies it (rule 5). sourceLive false records that finding.
@@ -331,65 +341,69 @@ export function assessClosures(
   return { active, total, addresses, reasons, score: null, sourceLive };
 }
 
-async function getJson(request, fetchImpl) {
-  const url = new URL(request.url);
-  for (const [k, v] of Object.entries(request.params)) url.searchParams.set(k, v);
-  let response;
+/**
+ * Fetch the closure layers and the liveness query in parallel, apply the
+ * freshness test (rule 5, first test) and the configured box, and return the
+ * records without assessing them, so the requests can go out before routing
+ * has answered and assessClosures can wait for the route polyline.
+ *
+ * Returns { records, sourceLive: true } or { failure } where failure is the
+ * unknown shape, or the stale shape when the source's newest record is
+ * before this month: a feed nobody maintains can say nothing about this
+ * morning, however many records it returned. Never throws.
+ */
+export async function loadClosures(config, fetchImpl = fetch, { now = Date.now(), signal } = {}) {
   try {
-    response = await fetchImpl(url.toString(), { method: 'GET', headers: { Accept: 'application/json' } });
+    let bbox;
+    let requests;
+    try {
+      bbox = checkBox(config?.incidents);
+      requests = CLOSURE_LAYERS.map((layer) => ({ layer, request: closuresRequest(layer) }));
+    } catch (cause) {
+      return { failure: unknown(cause.message) };
+    }
+
+    const [liveness, ...layers] = await Promise.all([
+      getJson(livenessRequest(LIVENESS_LAYER), { fetchImpl, signal }),
+      ...requests.map(({ request }) => getJson(request, { fetchImpl, signal })),
+    ]);
+
+    if (liveness.error) return { failure: unknown(`liveness ${liveness.error}`) };
+    const newest = newestEffective(liveness.data);
+    if (newest == null) return { failure: unknown('liveness response had no date') };
+    if (!sourceIsLive(newest, now)) return { failure: stale() };
+
+    const records = [];
+    for (let i = 0; i < layers.length; i += 1) {
+      const { layer } = requests[i];
+      if (layers[i].error) return { failure: unknown(layers[i].error) };
+      if (layers[i].data?.exceededTransferLimit === true) {
+        return { failure: unknown(`layer ${layer} response was cut short by the server`) };
+      }
+      const normalised = normaliseClosures(layers[i].data, layer);
+      if (normalised === null) return { failure: unknown(`layer ${layer} response had no feature list`) };
+      records.push(...normalised.filter((r) => inBox(r, bbox)));
+    }
+    return { records, sourceLive: true };
   } catch (cause) {
-    return { error: `network error (${cause?.name ?? 'Error'})` };
-  }
-  if (!response.ok) return { error: `HTTP ${response.status}` };
-  try {
-    return { data: await response.json() };
-  } catch {
-    return { error: 'unparseable response' };
+    return { failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) };
   }
 }
 
 /**
- * Fetch planned closures for the configured box and assess them.
- *
- * The closure layers and the liveness query run in parallel. A stale source
- * (newest record before this month) is unknown with the reason 'planned
- * closures source stale', however many records it returned: a feed nobody
- * maintains can say nothing about this morning. Never throws.
+ * Fetch planned closures for the configured box and assess them against the
+ * route: loadClosures then assessClosures. Never throws.
  *
  * `points` is the decoded drive polyline ([lat, lon] pairs) used to pick out
- * the on-route closures; without it the result counts the whole box. Either
- * way the box query is the same, so a caller can start the fetch before the
- * routing response and pass the points to assessClosures itself if it
- * prefers.
+ * the on-route closures; without it the result counts the whole box and says
+ * so. The engine calls the two halves itself so the fetch overlaps routing.
  */
 export async function fetchClosures(
   config,
   fetchImpl = fetch,
-  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
+  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES, signal } = {},
 ) {
-  let requests;
-  try {
-    requests = CLOSURE_LAYERS.map((layer) => ({ layer, request: closuresRequest(config?.incidents, layer) }));
-  } catch (cause) {
-    return unknown(cause.message);
-  }
-
-  const [liveness, ...layers] = await Promise.all([
-    getJson(livenessRequest(LIVENESS_LAYER), fetchImpl),
-    ...requests.map(({ request }) => getJson(request, fetchImpl)),
-  ]);
-
-  if (liveness.error) return unknown(`liveness ${liveness.error}`);
-  const newest = newestEffective(liveness.data);
-  if (newest == null) return unknown('liveness response had no date');
-  if (!sourceIsLive(newest, now)) return stale();
-
-  const records = [];
-  for (let i = 0; i < layers.length; i += 1) {
-    if (layers[i].error) return unknown(layers[i].error);
-    const normalised = normaliseClosures(layers[i].data, requests[i].layer);
-    if (normalised === null) return unknown(`layer ${requests[i].layer} response had no feature list`);
-    records.push(...normalised);
-  }
-  return assessClosures(records, { now, sourceLive: true, points, radiusMetres });
+  const loaded = await loadClosures(config, fetchImpl, { now, signal });
+  if (loaded.failure) return loaded.failure;
+  return assessClosures(loaded.records, { now, sourceLive: true, points, radiusMetres });
 }

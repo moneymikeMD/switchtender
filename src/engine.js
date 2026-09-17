@@ -5,25 +5,47 @@
 // serialises it. Both go through here so that the two can never disagree
 // about what the verdict is.
 //
-// Behaviour, in order, matching what the CLI did when this was inlined:
-//   1. Live incidents start only when TRAFFIC_API_KEY is set; otherwise null.
-//   2. Planned District closures start before routing (they need only the
-//      config bounding box).
-//   3. Routing. A RouteError propagates: routing is the required signal and
+// Behaviour, in order:
+//   1. Every optional signal starts at once, alongside routing, each with its
+//      own deadline (SIGNAL_TIMEOUT_MS). Live incidents, District closures and
+//      Maryland CHART are fetched now and matched to the route later; events
+//      and track work need no geometry and run to completion. None of these
+//      can reject: each module catches everything and reports the unknown
+//      shape, and a guard here catches a module that forgets, so nothing is
+//      left as an unhandled rejection while routing is still in flight.
+//   2. Routing. A RouteError propagates: routing is the required signal and
 //      the caller decides how to say nothing.
-//   4. Maryland CHART needs the drive-through polyline, so it starts after.
-//   5. decide() sees all four context fields.
-//   6. Logging is optional, never throws, and its status is returned rather
-//      than printed.
+//   3. The three spatial signals are assessed against the drive polyline.
+//   4. decide() sees every signal. A missing optional key reaches it as that
+//      signal's own unknown result, charged once; the engine passes no
+//      `degraded` list.
+//   5. Logging is optional, bounded by LOG_TIMEOUT_MS, never throws, and its
+//      status is returned rather than printed.
 
 import { computeOptions } from './routes.js';
 import { decide, speak } from './verdict.js';
-import { fetchIncidents } from './incidents.js';
+import { loadIncidents, assessTrajectory, unknownIncidents } from './incidents.js';
 import { logVerdict } from './log.js';
-import { fetchClosures } from './closures.js';
-import { fetchChart } from './chart.js';
-import { fetchEvents } from './events.js';
-import { fetchTrackwork } from './trackwork.js';
+import { loadClosures, assessClosures, unknownClosures } from './closures.js';
+import { loadChart, assessChart, unknownChart } from './chart.js';
+import { fetchEvents, unknownEvents } from './events.js';
+import { fetchTrackwork, unknownTrackwork } from './trackwork.js';
+
+// A vendor that has not answered by now costs its signal, not the verdict.
+// DDOT used to take 6 s on its own before the envelope filter was dropped;
+// the phone's server answers 504 at 20 s whatever happens in here.
+export const SIGNAL_TIMEOUT_MS = 8_000;
+
+// The sheet write happens after the verdict is known, so a stalled Sheets or
+// metadata call is the one thing that could hold a computed answer hostage.
+export const LOG_TIMEOUT_MS = 4_000;
+
+// A module's fetch is documented never to throw. If one does anyway, the
+// result is its unknown shape, not a crashed process.
+const guard = (promise, unknown) =>
+  promise.catch((cause) => ({ failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) }));
+const guardWhole = (promise, unknown) =>
+  promise.catch((cause) => unknown(`unexpected error (${cause?.name ?? 'Error'})`));
 
 /**
  * Compute the verdict for a loaded config.
@@ -34,37 +56,60 @@ import { fetchTrackwork } from './trackwork.js';
  * @param options.log        false skips the sheet write even if config enables it
  * @param options.from       'fork' (default) for the verdict at the fork, 'origin'
  *                           for a whole-trip estimate from home (CMB-30)
+ * @param options.signalTimeoutMs  deadline per optional feed
+ * @param options.logTimeoutMs     deadline for the sheet write
  * @returns { options, incidents, closures, maryland, events, trackwork, verdict, spoken, logged }
- *          where events and trackwork are null when not consulted (no key, no lines),
+ *          where events and trackwork are null when not consulted (no venues, no lines),
  *          where logged is { ok, error } or null when nothing was attempted.
  * @throws RouteError when the onward options cannot be computed.
  */
 export async function runVerdict(
   config,
-  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork' } = {},
+  {
+    fetchImpl = fetch,
+    now = new Date(),
+    log = true,
+    from = 'fork',
+    signalTimeoutMs = SIGNAL_TIMEOUT_MS,
+    logTimeoutMs = LOG_TIMEOUT_MS,
+  } = {},
 ) {
   const { decision, secrets } = config;
+  const nowMs = now.getTime();
+  const deadline = () => AbortSignal.timeout(signalTimeoutMs);
 
-  const trafficKey = secrets.keys.TRAFFIC_API_KEY;
-  const incidentsPromise = trafficKey
-    ? fetchIncidents(config, trafficKey, fetchImpl)
-    : Promise.resolve(null);
+  const incidentsLoad = guard(
+    loadIncidents(config, secrets.keys.TRAFFIC_API_KEY ?? null, fetchImpl, { signal: deadline() }),
+    unknownIncidents,
+  );
+  const closuresLoad = guard(
+    loadClosures(config, fetchImpl, { now: nowMs, signal: deadline() }),
+    unknownClosures,
+  );
+  const chartLoad = guard(loadChart(fetchImpl, { now: nowMs, signal: deadline() }), unknownChart);
   // Scheduled events (CMB-13, CMB-25) run whenever venues are configured:
   // fetchEvents routes each venue to its provider and copes with a missing
   // Ticketmaster key itself, because mlb venues need no key at all. Planned
-  // track work (CMB-26) needs only the configured lines. Both start with
-  // routing. No venues or no lines means the signal is not attempted and
-  // stays null, which decide() reads as "not consulted", not "clear".
+  // track work (CMB-26) needs only the configured lines. No venues or no
+  // lines means the signal is not attempted and stays null, which decide()
+  // reads as "not consulted", not "clear".
   const eventsPromise = (config.venues ?? []).length > 0
-    ? fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: now.getTime() })
+    ? guardWhole(
+        fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }),
+        unknownEvents,
+      )
     : Promise.resolve(null);
   const lines = config.transit?.lines ?? [];
   const trackworkPromise = lines.length > 0
-    ? fetchTrackwork(lines, fetchImpl, {
-        now: now.getTime(),
-        timeZone: config.route.timezone,
-        log: (line) => console.error(line),
-      })
+    ? guardWhole(
+        fetchTrackwork(lines, fetchImpl, {
+          now: nowMs,
+          timeZone: config.route.timezone,
+          log: (line) => console.error(line),
+          signal: deadline(),
+        }),
+        unknownTrackwork,
+      )
     : Promise.resolve(null);
 
   const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, {
@@ -72,19 +117,24 @@ export async function runVerdict(
     now,
   });
 
-  // Closures (CMB-28) and Maryland records (CMB-16) are matched against the
-  // drive geometry, so both wait for the polyline.
+  // Incidents (CMB-22, route-matched since 2026-09-17), closures (CMB-28) and
+  // Maryland records (CMB-16) are matched against the drive geometry.
   const points = options.driveThrough.points;
-  const [incidents, closures, maryland, events, trackwork] = await Promise.all([
-    incidentsPromise,
-    fetchClosures(config, fetchImpl, { now: now.getTime(), points }),
-    fetchChart(points, fetchImpl),
+  const [incidentsLoaded, closuresLoaded, chartLoaded, events, trackwork] = await Promise.all([
+    incidentsLoad,
+    closuresLoad,
+    chartLoad,
     eventsPromise,
     trackworkPromise,
   ]);
+  const incidents = incidentsLoaded.failure
+    ?? assessTrajectory(incidentsLoaded.incidents, { now: nowMs, points });
+  const closures = closuresLoaded.failure
+    ?? assessClosures(closuresLoaded.records, { now: nowMs, sourceLive: true, points });
+  const maryland = chartLoaded.failure
+    ?? assessChart(chartLoaded.records, points, { now: nowMs, sourceLive: true });
 
   const verdict = decide(options, decision, {
-    degraded: secrets.degraded,
     incidents,
     closures,
     maryland,
@@ -95,7 +145,8 @@ export async function runVerdict(
   });
 
   // CMB-11. Signals that postdate the frozen HEADER travel as extras and
-  // become trailing columns. A failed write is reported, never thrown.
+  // become the EXTRA_COLUMNS, in that order. A failed write is reported,
+  // never thrown; a stalled one is cut off by the deadline.
   let logged = null;
   if (log && config.log.enabled) {
     const extras = {
@@ -118,8 +169,19 @@ export async function runVerdict(
       drive_walk_seconds: options.driveThrough.walkSeconds ?? 0,
       drive_arrival: verdict.driveArrival,
       transit_arrival: verdict.transitArrival,
+      transit_walk_seconds: options.parkAndRide.walkSeconds ?? 0,
+      incidents_route_matched: incidents.score === null ? null : incidents.routeMatched,
     };
-    logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl });
+    logged = await logVerdict({
+      now,
+      config,
+      options,
+      incidents,
+      verdict,
+      extras,
+      fetchImpl,
+      signal: AbortSignal.timeout(logTimeoutMs),
+    });
   }
 
   return {

@@ -29,8 +29,9 @@
 // null, never 0; an empty day is a real "no game"; this signal moves
 // confidence and the spoken reason, never the verdict.
 
+import { getJson } from './http.js';
+
 export const SCHEDULE_ENDPOINT = 'https://statsapi.mlb.com/api/v1/schedule';
-const USER_AGENT = 'switchtender/1 (Node fetch)';
 
 // A game in one of these states has no crowd to meet.
 const NO_CROWD_STATES = new Set(['Postponed', 'Cancelled', 'Suspended']);
@@ -148,7 +149,9 @@ export function normaliseGames(vendorJson, venueName, { timeZone } = {}) {
   return out;
 }
 
-const UNAVAILABLE = 'ballpark schedule unavailable';
+/** Prefix of every failure reason from this module; events.js reads it to avoid saying it twice. */
+export const MLB_UNAVAILABLE = 'ballpark schedule unavailable';
+const UNAVAILABLE = MLB_UNAVAILABLE;
 
 function localDateOf(now, timeZone) {
   return localClock(now, timeZone).localDate;
@@ -161,36 +164,23 @@ function localDateOf(now, timeZone) {
  * says why, prefixed "ballpark schedule unavailable: " and never carrying
  * the URL. Never throws. One request per venue per run; no liveness probe.
  */
-export async function fetchMlbGames(venue, fetchImpl = fetch, { now = Date.now(), timeZone } = {}) {
+export async function fetchMlbGames(venue, fetchImpl = fetch, { now = Date.now(), timeZone, signal } = {}) {
   const fail = (why) => ({ events: null, reason: `${UNAVAILABLE}: ${why}` });
-  const date = localDateOf(now, timeZone);
-  if (!date) return fail('no route time zone');
-  let request;
   try {
-    request = scheduleRequest(venue?.mlb_team_id, { date, timeZone });
+    const date = localDateOf(now, timeZone);
+    if (!date) return fail('no route time zone');
+    let request;
+    try {
+      request = scheduleRequest(venue?.mlb_team_id, { date, timeZone });
+    } catch (cause) {
+      return fail(cause.message);
+    }
+    const { data, error } = await getJson(request, { fetchImpl, signal });
+    if (error) return fail(error);
+    const events = normaliseGames(data, venue?.name, { timeZone });
+    if (events === null) return fail('response had no schedule');
+    return { events, reason: null };
   } catch (cause) {
-    return fail(cause.message);
+    return fail(`unexpected error (${cause?.name ?? 'Error'})`);
   }
-  const url = new URL(request.url);
-  for (const [k, v] of Object.entries(request.params)) url.searchParams.set(k, v);
-
-  let response;
-  try {
-    response = await fetchImpl(url.toString(), {
-      method: 'GET',
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-    });
-  } catch (cause) {
-    return fail(`network error (${cause?.name ?? 'Error'})`);
-  }
-  if (!response.ok) return fail(`HTTP ${response.status}`);
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    return fail('unparseable response');
-  }
-  const events = normaliseGames(data, venue?.name, { timeZone });
-  if (events === null) return fail('response had no schedule');
-  return { events, reason: null };
 }

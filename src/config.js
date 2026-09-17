@@ -13,12 +13,20 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'smol-toml';
 
-/** Secrets, and what losing each one costs. */
+import { LINES } from './trackwork.js';
+
+/**
+ * Secrets, and what losing each one costs.
+ *
+ * TRANSIT_API_KEY (WMATA rail alerts) is deliberately absent: no module reads
+ * it yet, and listing it charged a confidence penalty for a feed that does
+ * not exist and refunded it when the key was merely present. Add it back
+ * with the module that consumes it.
+ */
 export const SECRETS = {
   ROUTES_API_KEY: { required: true, signal: 'routing' },
   TRAFFIC_API_KEY: { required: false, signal: 'live incidents' },
   EVENTS_API_KEY: { required: false, signal: 'scheduled events' },
-  TRANSIT_API_KEY: { required: false, signal: 'rail alerts' },
 };
 
 // Every place in [route] has one shape (CMB-33): where it is, what to call it,
@@ -47,7 +55,35 @@ function must(obj, path, kind) {
       `config: key "${path}" should be ${kind}, got ${typeof value}`,
     );
   }
+  // TOML admits nan and inf as numbers. Neither is a distance or a margin.
+  if (kind === 'number' && !Number.isFinite(value)) {
+    throw new ConfigError(`config: key "${path}" should be a finite number, got ${value}`);
+  }
   return value;
+}
+
+// An IANA zone name the runtime knows. Anything else passes typeof and then
+// throws RangeError from Intl on every verdict, after the routing calls have
+// been paid for; the startup check is where that belongs.
+function timeZone(raw) {
+  const zone = must(raw, 'route.timezone', 'string');
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new ConfigError(`config: route.timezone "${zone}" is not a known IANA time zone`);
+  }
+  return zone;
+}
+
+// "HH:MM" on a 24-hour clock. events.js parses the same shape; a value it
+// cannot read costs the events signal on every run with no startup error.
+function clockTime(raw, path) {
+  const value = must(raw, path, 'string');
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) {
+    throw new ConfigError(`config: key "${path}" should be a 24-hour clock time like "17:30", got ${JSON.stringify(value)}`);
+  }
+  return value.trim();
 }
 
 /** Build one place from `[route.<name>]`. Null for an absent optional place. */
@@ -105,6 +141,9 @@ function logBlock(raw) {
 
 // The transit leg (CMB-26). Optional: a config without [transit] names no rail
 // lines, so the planned track-work feed has nothing to match and stays quiet.
+// Names are matched to the schedule page's canonical spelling here, so
+// "red", "Red Line" and "RED" all load as "Red", and a line the page does not
+// know is an error rather than a signal that quietly reports clear forever.
 function transitBlock(raw) {
   const block = raw.transit ?? {};
   if (typeof block !== 'object' || Array.isArray(block)) {
@@ -114,7 +153,17 @@ function transitBlock(raw) {
   if (!Array.isArray(lines) || lines.some((l) => typeof l !== 'string' || l.trim() === '')) {
     throw new ConfigError('config: key "transit.lines" should be an array of non-empty strings');
   }
-  return { lines: lines.map((l) => l.trim()) };
+  const canonical = lines.map((l) => {
+    const wanted = l.trim().replace(/\s+line$/i, '').toLowerCase();
+    const found = LINES.find((name) => name.toLowerCase() === wanted);
+    if (!found) {
+      throw new ConfigError(
+        `config: transit.lines entry ${JSON.stringify(l)} is not a known line; use one of ${LINES.join(', ')}`,
+      );
+    }
+    return found;
+  });
+  return { lines: [...new Set(canonical)] };
 }
 
 // Event providers a venue can name (CMB-25). Ticketmaster is the default and
@@ -131,6 +180,20 @@ function venueEntry(v, i) {
     if (v[k] === undefined) {
       throw new ConfigError(`config: venues[${i}] is missing "${k}"`);
     }
+  }
+  if (typeof v.name !== 'string' || v.name.trim() === '') {
+    throw new ConfigError(`config: venues[${i}].name should be a non-empty string`);
+  }
+  for (const [k, limit] of [['lat', 90], ['lon', 180]]) {
+    if (typeof v[k] !== 'number' || !Number.isFinite(v[k])) {
+      throw new ConfigError(`config: venues[${i}].${k} should be a number, got ${JSON.stringify(v[k])}`);
+    }
+    if (v[k] < -limit || v[k] > limit) {
+      throw new ConfigError(`config: venues[${i}].${k} ${v[k]} is out of range`);
+    }
+  }
+  if (typeof v.weight !== 'number' || !Number.isFinite(v.weight) || v.weight < 0) {
+    throw new ConfigError(`config: venues[${i}].weight should be a number of zero or more, got ${JSON.stringify(v.weight)}`);
   }
   const provider = v.provider ?? 'ticketmaster';
   if (!VENUE_PROVIDERS.includes(provider)) {
@@ -153,6 +216,14 @@ function venueEntry(v, i) {
   return { name: v.name, lat: v.lat, lon: v.lon, weight: v.weight, provider, mlb_team_id };
 }
 
+function margin(raw) {
+  const value = must(raw, 'decision.minimum_drive_margin_minutes', 'number');
+  if (value < 0) {
+    throw new ConfigError(`config: decision.minimum_drive_margin_minutes should be zero or more, got ${value}`);
+  }
+  return value;
+}
+
 /** Parse and validate TOML text. Separated from file reading so it is testable. */
 export function parseConfig(text) {
   let raw;
@@ -163,7 +234,7 @@ export function parseConfig(text) {
   }
 
   const route = Object.fromEntries(PLACES.map((n) => [n, place(raw, n)]));
-  route.timezone = must(raw, 'route.timezone', 'string');
+  route.timezone = timeZone(raw);
 
   const bbox = {
     min_lon: must(raw, 'incidents.min_lon', 'number'),
@@ -186,16 +257,8 @@ export function parseConfig(text) {
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
     decision: {
       transit_wins_ties: must(raw, 'decision.transit_wins_ties', 'boolean'),
-      minimum_drive_margin_minutes: must(
-        raw,
-        'decision.minimum_drive_margin_minutes',
-        'number',
-      ),
-      assumed_evening_departure: must(
-        raw,
-        'decision.assumed_evening_departure',
-        'string',
-      ),
+      minimum_drive_margin_minutes: margin(raw),
+      assumed_evening_departure: clockTime(raw, 'decision.assumed_evening_departure'),
     },
     incidents: bbox,
     venues,

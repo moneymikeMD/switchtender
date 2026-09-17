@@ -105,8 +105,25 @@ test('a missing optional secret degrades a named signal instead of failing', () 
   assert.equal(keys.ROUTES_API_KEY, 'test-value');
 });
 
-test('with every key present nothing is degraded', () => {
+test('with every key present nothing is degraded, and the unread rail-alerts key is not a secret the engine scores', () => {
   assert.deepEqual(loadSecrets(allKeys).degraded, []);
+  assert.equal('TRANSIT_API_KEY' in SECRETS, false, 'no module reads it; listing it moved confidence for nothing');
+  assert.deepEqual(loadSecrets({ ...allKeys, TRANSIT_API_KEY: 'x' }).degraded, []);
+});
+
+test('an unknown time zone, a non-finite number, a bad clock time or a negative margin fail at startup, not on the first verdict', () => {
+  const at = (from, to) => exampleText.replace(from, to);
+  assert.throws(() => parseConfig(at('timezone = "America/New_York"', 'timezone = "America/Boston"')), /not a known IANA time zone/);
+  assert.throws(() => parseConfig(at('minimum_drive_margin_minutes = 5', 'minimum_drive_margin_minutes = nan')), /finite number/);
+  assert.throws(() => parseConfig(at('minimum_drive_margin_minutes = 5', 'minimum_drive_margin_minutes = inf')), /finite number/);
+  assert.throws(() => parseConfig(at('minimum_drive_margin_minutes = 5', 'minimum_drive_margin_minutes = -1')), /zero or more/);
+  assert.throws(() => parseConfig(at('assumed_evening_departure = "17:30"', 'assumed_evening_departure = "5pm"')), /24-hour clock time/);
+  assert.throws(() => parseConfig(at('assumed_evening_departure = "17:30"', 'assumed_evening_departure = "25:00"')), /24-hour clock time/);
+  assert.equal(parseConfig(at('assumed_evening_departure = "17:30"', 'assumed_evening_departure = "5:30"')).decision.assumed_evening_departure, '5:30');
+  assert.throws(() => parseConfig(at('lat = 42.3662', 'lat = "42.3662"')), /venues\[0\]\.lat should be a number/);
+  assert.throws(() => parseConfig(at('lat = 42.3662', 'lat = 142.0')), /venues\[0\]\.lat 142 is out of range/);
+  assert.throws(() => parseConfig(at('weight = 1.0\n\n[[venues]]', 'weight = -1\n\n[[venues]]')), /venues\[0\]\.weight/);
+  assert.throws(() => parseConfig(at('name = "TD Garden"', 'name = "  "')), /venues\[0\]\.name/);
 });
 
 test('a missing config file reports the path, not a stack trace', () => {
@@ -122,11 +139,16 @@ test('the example contains no coordinate from any maintainer commute', () => {
   assert.doesNotMatch(exampleText, /39\.4\d{3}|-77\.3\d{3}/);
 });
 
-test('[transit] is optional, defaults to no lines, and rejects non-string lines', () => {
+test('[transit] is optional, defaults to no lines, canonicalises line names, and rejects unknown or non-string lines', () => {
   const base = readFileSync('config.example.toml', 'utf8');
   assert.deepEqual(parseConfig(base).transit.lines, []);
   const withLines = base.replace('lines = []', 'lines = ["Red", " Green "]');
   assert.deepEqual(parseConfig(withLines).transit.lines, ['Red', 'Green']);
+  // Any spelling the page would recognise loads as the page's own; a line
+  // the page does not know would otherwise report clear forever.
+  const spelt = base.replace('lines = []', 'lines = ["red", "RED", "Silver Line", "yellow line"]');
+  assert.deepEqual(parseConfig(spelt).transit.lines, ['Red', 'Silver', 'Yellow']);
+  assert.throws(() => parseConfig(base.replace('lines = []', 'lines = ["Purple"]')), /"Purple" is not a known line; use one of Red, Orange/);
   const bad = base.replace('lines = []', 'lines = ["Red", 7]');
   assert.throws(() => parseConfig(bad), ConfigError);
 });

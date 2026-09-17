@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 
 import {
   HEADER,
+  EXTRA_COLUMNS,
+  FULL_HEADER,
   headerFor,
   buildRow,
   localTime,
@@ -22,7 +24,7 @@ const exampleText = readFileSync('config.example.toml', 'utf8');
 const config = {
   route: { timezone: 'America/New_York' },
   decision: { transit_wins_ties: true, minimum_drive_margin_minutes: 5 },
-  secrets: { degraded: ['scheduled events', 'rail alerts'] },
+  secrets: { degraded: ['scheduled events', 'live incidents'] },
   log: { enabled: true, sheet_id: 'sheet-123', sheet_tab: 'verdicts' },
 };
 
@@ -64,7 +66,7 @@ const verdict = {
 
 const now = new Date('2026-09-16T12:34:56Z'); // 08:34:56 EDT, a Wednesday
 
-const col = (row, name, header = HEADER) => row[header.indexOf(name)];
+const col = (row, name, header = FULL_HEADER) => row[header.indexOf(name)];
 
 const jsonResponse = (status, body = {}) => ({
   ok: status >= 200 && status < 300,
@@ -73,14 +75,19 @@ const jsonResponse = (status, body = {}) => ({
   json: async () => body,
 });
 
-test('HEADER has no duplicate columns', () => {
-  assert.equal(new Set(HEADER).size, HEADER.length);
-  for (const name of HEADER) assert.match(name, /^[a-z][a-z0-9_]*$/, name);
+test('HEADER and EXTRA_COLUMNS have no duplicate columns, and FULL_HEADER is the two in order', () => {
+  assert.equal(new Set(FULL_HEADER).size, FULL_HEADER.length);
+  for (const name of FULL_HEADER) assert.match(name, /^[a-z][a-z0-9_]*$/, name);
+  assert.deepEqual(FULL_HEADER, [...HEADER, ...EXTRA_COLUMNS]);
+  // The live tab's first row was written with these six extras, in this order.
+  assert.deepEqual(EXTRA_COLUMNS.slice(0, 6), [
+    'closures_active', 'closures_source_live', 'closures_addresses', 'maryland_on_route', 'maryland_total', 'maryland_descriptions',
+  ]);
 });
 
-test('buildRow is aligned to HEADER', () => {
+test('buildRow is aligned to FULL_HEADER', () => {
   const row = buildRow({ now, config, options, incidents, verdict });
-  assert.equal(row.length, HEADER.length);
+  assert.equal(row.length, FULL_HEADER.length);
   assert.ok(row.every((c) => typeof c === 'string'));
   assert.equal(col(row, 'timestamp'), '2026-09-16T08:34:56-04:00');
   assert.equal(col(row, 'local_date'), '2026-09-16');
@@ -96,7 +103,7 @@ test('buildRow is aligned to HEADER', () => {
   assert.equal(col(row, 'incidents_count'), '7');
   assert.equal(col(row, 'incidents_unstable'), 'true');
   assert.deepEqual(JSON.parse(col(row, 'incidents_by_category')), { accident: 1, jam: 6 });
-  assert.equal(col(row, 'degraded_signals'), 'scheduled events, rail alerts');
+  assert.equal(col(row, 'degraded_signals'), 'scheduled events, live incidents');
   assert.equal(col(row, 'choice'), 'transit');
   assert.equal(col(row, 'required_margin_minutes'), '8.8');
   assert.equal(col(row, 'reasons'), 'the road is congested | a crash ahead');
@@ -112,15 +119,26 @@ test('weather columns are present and empty', () => {
   }
 });
 
-test('extras land at the end in stable insertion order', () => {
-  const extras = { chart_incidents: 3, ddot_closures: 0, chart_unstable: false };
-  const header = headerFor(extras);
+test('extras land under their EXTRA_COLUMNS label whatever order they are given in; an unlisted one is refused', () => {
+  const extras = { maryland_total: 47, closures_active: 3, closures_source_live: false };
+  assert.deepEqual(headerFor(extras), Array.from(FULL_HEADER));
   const row = buildRow({ now, config, options, incidents, verdict, extras });
-  assert.equal(row.length, HEADER.length + 3);
-  assert.deepEqual(header.slice(HEADER.length), ['chart_incidents', 'ddot_closures', 'chart_unstable']);
-  assert.deepEqual(row.slice(HEADER.length), ['3', '0', 'false']);
-  // An extra that names an existing column does not add a second one.
-  assert.equal(headerFor({ choice: 'x', new_one: 1 }).length, HEADER.length + 1);
+  assert.equal(row.length, FULL_HEADER.length);
+  assert.equal(col(row, 'closures_active'), '3');
+  assert.equal(col(row, 'closures_source_live'), 'false');
+  assert.equal(col(row, 'maryland_total'), '47');
+  assert.equal(col(row, 'events_count'), '', 'an extra not given is empty');
+  // A key that is not a column would land under the wrong label in BigQuery.
+  assert.throws(() => headerFor({ weather_x: 1 }), /weather_x/);
+  assert.throws(() => buildRow({ now, config, options, incidents, verdict, extras: { chart_incidents: 3 } }), /chart_incidents/);
+});
+
+test('an unknown incident lookup leaves incidents_unstable and road_unstable empty, never false', () => {
+  const unknownIncidents = { unstable: null, score: null, count: null, byCategory: {}, reasons: ['live incidents unavailable: HTTP 500'] };
+  const row = buildRow({ now, config, options, incidents: unknownIncidents, verdict: { ...verdict, roadUnstable: null } });
+  assert.equal(col(row, 'incidents_unstable'), '');
+  assert.equal(col(row, 'road_unstable'), '');
+  assert.equal(col(row, 'incidents_reasons'), 'live incidents unavailable: HTTP 500');
 });
 
 test('unknown congestion produces empty cells, not zeros', () => {
@@ -191,7 +209,7 @@ test('appendRow reports a network failure without throwing', async () => {
   assert.match(result.error, /ECONNRESET/);
 });
 
-test('ensureHeader writes HEADER when A1 is empty and leaves an existing header alone', async () => {
+test('ensureHeader writes FULL_HEADER when row 1 is empty and leaves a matching header alone', async () => {
   const writes = [];
   const emptyFetch = async (url, init) => {
     if (init.method === 'GET') return jsonResponse(200, { range: 'x', majorDimension: 'ROWS' });
@@ -201,15 +219,52 @@ test('ensureHeader writes HEADER when A1 is empty and leaves an existing header 
   const created = await ensureHeader({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: emptyFetch });
   assert.equal(created.ok, true);
   assert.equal(created.created, true);
-  assert.deepEqual(writes[0].values[0], Array.from(HEADER));
+  assert.equal(created.extended, false);
+  assert.deepEqual(writes[0].values[0], Array.from(FULL_HEADER));
 
   const filledFetch = async (url, init) => {
-    if (init.method === 'GET') return jsonResponse(200, { values: [['timestamp']] });
+    if (init.method === 'GET') return jsonResponse(200, { values: [Array.from(FULL_HEADER)] });
     throw new Error('should not write');
   };
   const kept = await ensureHeader({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: filledFetch });
   assert.equal(kept.ok, true);
   assert.equal(kept.created, false);
+  assert.equal(kept.extended, false);
+});
+
+test('ensureHeader extends a header that is a prefix of the columns (the live tab) and refuses any other', async () => {
+  const seen = [];
+  const writes = [];
+  const prefixFetch = async (url, init) => {
+    seen.push(`${init.method} ${decodeURIComponent(url).replace(/^.*spreadsheets\/S/, '')}`);
+    if (init.method === 'GET') return jsonResponse(200, { values: [[...FULL_HEADER.slice(0, HEADER.length + 6), '', '']] });
+    writes.push(JSON.parse(init.body));
+    return jsonResponse(200, {});
+  };
+  const extended = await ensureHeader({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: prefixFetch });
+  assert.equal(extended.ok, true);
+  assert.equal(extended.created, false);
+  assert.equal(extended.extended, true);
+  assert.ok(seen[0].startsWith("GET /values/'verdicts'!1:1"), seen[0]);
+  assert.deepEqual(writes[0].values[0], Array.from(FULL_HEADER));
+  assert.equal(writes[0].range, "'verdicts'!A1");
+
+  const otherFetch = async (url, init) => {
+    if (init.method === 'GET') return jsonResponse(200, { values: [['date', 'choice']] });
+    throw new Error('should not write');
+  };
+  const refused = await ensureHeader({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: otherFetch });
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /does not match/);
+
+  // A tab name with an apostrophe is doubled in the body range as in the URL.
+  const quoted = [];
+  await ensureHeader({ sheetId: 'S', tab: "Mike's", token: 't', fetchImpl: async (url, init) => {
+    if (init.method === 'GET') return jsonResponse(200, {});
+    quoted.push(JSON.parse(init.body).range);
+    return jsonResponse(200, {});
+  } });
+  assert.deepEqual(quoted, ["'Mike''s'!A1"]);
 });
 
 test('ensureHeader creates the tab when the range cannot be parsed', async () => {
@@ -269,16 +324,46 @@ test('logVerdict swallows a throwing token provider', async () => {
   assert.match(result.error, /metadata exploded/);
 });
 
-test('logVerdict happy path: header check then append, in that order', async () => {
+test('logVerdict happy path: header check then append, in that order, with the deadline on every call', async () => {
   const calls = [];
+  const signal = AbortSignal.timeout(10_000);
   const fetchImpl = async (url, init) => {
     calls.push(init.method);
-    if (init.method === 'GET') return jsonResponse(200, { values: [['timestamp']] });
+    assert.equal(init.signal, signal);
+    if (init.method === 'GET') return jsonResponse(200, { values: [Array.from(FULL_HEADER)] });
     return jsonResponse(200, { updates: { updatedRows: 1 } });
   };
-  const result = await logVerdict({ now, config, options, incidents, verdict, tokenProvider: async () => 'tok', fetchImpl });
+  const result = await logVerdict({ now, config, options, incidents, verdict, tokenProvider: async () => 'tok', fetchImpl, signal });
   assert.deepEqual(result, { ok: true, error: null });
   assert.deepEqual(calls, ['GET', 'POST']);
+});
+
+test('logVerdict hands the injected fetch to the token provider, so the default never leaves the stub', async () => {
+  const urls = [];
+  const fetchImpl = async (url, init) => {
+    urls.push(String(url));
+    if (String(url).includes('metadata.google.internal')) return jsonResponse(200, { access_token: 'from-stub' });
+    if (init.method === 'GET') return jsonResponse(200, { values: [Array.from(FULL_HEADER)] });
+    assert.equal(init.headers.Authorization, 'Bearer from-stub');
+    return jsonResponse(200, {});
+  };
+  const result = await logVerdict({ now, config: { ...config }, options, incidents, verdict, fetchImpl });
+  assert.deepEqual(result, { ok: true, error: null });
+  assert.ok(urls[0].includes('metadata.google.internal'));
+  let seen;
+  const provider = async (args) => { seen = args; return 'tok'; };
+  const signal = AbortSignal.timeout(10_000);
+  await logVerdict({ now, config, options, incidents, verdict, tokenProvider: provider, fetchImpl, signal });
+  assert.equal(seen.fetchImpl, fetchImpl);
+  assert.equal(seen.signal, signal);
+});
+
+test('an aborted sheet call is reported by name', async () => {
+  const signal = AbortSignal.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+  const fetchImpl = async (url, init) => { throw init.signal.reason; };
+  const result = await appendRow(['a'], { sheetId: 'S', tab: 't', token: 'tok', fetchImpl, signal });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /TimeoutError/);
 });
 
 test('tokenFromEnvOrMetadata prefers the environment and returns null when metadata is unreachable', async () => {

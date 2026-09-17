@@ -24,6 +24,12 @@ import { decodePolyline, cumulativeDistances } from './polyline.js';
 
 const ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
+// Deadline per Routes request. Routing is the required signal, so a stalled
+// call is a RouteError (no verdict), not a long wait: the phone is at speed
+// and the server answers 504 at 20 s regardless. Undici's own default is
+// about 300 s, which the CLI would otherwise sit through.
+export const ROUTE_TIMEOUT_MS = 12_000;
+
 // How much each speed class counts toward the congestion score. NORMAL is
 // free, a jam is the whole cost, slow is half. These are weights on a
 // descriptive measure, not a calibrated model; the verdict rule consumes the
@@ -106,22 +112,37 @@ export function summariseCongestion(route) {
   return { score: weighted / totalMetres, metres, share, totalMetres, unknown: false };
 }
 
-async function computeRoute(body, fieldMask, { apiKey, fetchImpl = fetch }) {
-  const response = await fetchImpl(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': fieldMask,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
+async function computeRoute(body, fieldMask, { apiKey, fetchImpl = fetch, timeoutMs = ROUTE_TIMEOUT_MS }) {
+  let response;
+  try {
+    response = await fetchImpl(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': fieldMask,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    // Every failure class the caller can act on is a RouteError, so the
+    // documented policy (503 from the server, "No verdict" from the CLI)
+    // covers a dropped socket or a deadline as well as a bad status. The
+    // message names the class only: undici's message can carry the URL.
+    throw new RouteError(`routes: request failed (${cause?.name ?? 'Error'})`);
+  }
+  if (!response?.ok) {
     // Deliberately does not include the body verbatim: an error response can
     // echo the request, and the request contains the origin coordinate.
-    throw new RouteError(`routes: request failed with HTTP ${response.status}`);
+    throw new RouteError(`routes: request failed with HTTP ${response?.status ?? 'unknown'}`);
   }
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new RouteError('routes: response was not JSON');
+  }
   const route = data?.routes?.[0];
   if (!route) {
     throw new RouteError('routes: response contained no route');

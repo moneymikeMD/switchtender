@@ -28,6 +28,8 @@
 // nothing is filtered by when the page was edited. Fail soft: a scraper that
 // quietly returns empty is worse than one that says it could not read.
 
+import { getText } from './http.js';
+
 export const TRACKWORK_URL = 'https://www.wmata.com/ride/planned-track-work.html';
 
 /** Metrorail lines as the page names them. Matching is case-insensitive. */
@@ -41,6 +43,13 @@ export const DEFAULT_TIME_ZONE = 'America/New_York';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
+
+// A row with a Start but no readable End ("Until further notice", "TBD", an
+// empty cell) is open-ended. It is treated as running this long from its
+// start: long enough to stay active through any horizon the engine asks
+// about, short enough that a forgotten row eventually ages out under
+// STALE_AFTER_MS. Spoken as "until further notice", never with a date.
+export const OPEN_ENDED_MS = 90 * DAY_MS;
 
 /** Rule 5, first test: a source whose newest window ended this long ago is dead. */
 export const STALE_AFTER_MS = 60 * DAY_MS;
@@ -71,10 +80,17 @@ MONTHS.forEach((names, i) => names.forEach((n) => MONTH_INDEX.set(n, i)));
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—' };
 
+// A numeric entity outside Unicode ("&#1114112;") is left as written rather
+// than thrown on: String.fromCodePoint rejects it with a RangeError, and one
+// bad character in a cell must not cost the signal.
+function codePoint(n, original) {
+  return Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : original;
+}
+
 function decode(text) {
   return text
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => codePoint(parseInt(h, 16), m))
+    .replace(/&#(\d+);/g, (m, d) => codePoint(Number(d), m))
     .replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
 }
 
@@ -237,19 +253,20 @@ function inferYear(date, nowCal, timeZone, nowMs) {
   return { year: best.year, rolled: best.year !== nowCal.year };
 }
 
-function windowFrom(dates, nowMs, timeZone) {
+function windowFrom(dates, nowMs, timeZone, { openEnded = false } = {}) {
   const first = dates[0];
   const last = dates[dates.length - 1];
   const nowCal = calendarOf(nowMs, timeZone);
   const start = inferYear(first, nowCal, timeZone, nowMs);
+  const startsAt = zonedMidnight(start.year, first.month, first.day, timeZone);
+  if (openEnded) return { startsAt, endsAt: startsAt + OPEN_ENDED_MS, rolledYear: start.rolled, openEnded: true };
   let endYear = last.year ?? start.year;
   if (!last.year && (last.month < first.month || (last.month === first.month && last.day < first.day))) {
     endYear = start.year + 1; // "Dec. 28 - Jan. 3"
   }
-  const startsAt = zonedMidnight(start.year, first.month, first.day, timeZone);
   const endsAt = zonedMidnight(endYear, last.month, last.day, timeZone) + DAY_MS - 1;
   if (endsAt < startsAt) return null;
-  return { startsAt, endsAt, rolledYear: start.rolled };
+  return { startsAt, endsAt, rolledYear: start.rolled, openEnded: false };
 }
 
 /**
@@ -266,6 +283,8 @@ function windowFrom(dates, nowMs, timeZone) {
  *   single day    "Sept. 19"  "Sat., Sept. 19"  "September 19, 2026"
  *   same month    "Sept. 27-28"  "Oct. 3 - 5"  "Oct. 3 to 5"  (en/em dash too)
  *   cross month   "Nov. 26 - Dec. 1"  "Dec. 28 through Jan. 3"
+ *   open-ended    Start "Sept. 19"  End "Until further notice" (or "TBD", or
+ *                 empty): openEnded true, endsAt OPEN_ENDED_MS after the start
  *
  * Null (unknown) rather than a guess when: no table has a header naming a
  * line column and a date column; a data row has cells but no readable date;
@@ -290,11 +309,18 @@ export function parseTrackwork(html, { now = Date.now(), timeZone = DEFAULT_TIME
       if (c.length <= 1) continue; // a note row, not a window
       if (c.length <= Math.max(cols.start, cols.line, cols.end)) return null;
       const dates = datesIn(textOf(c[cols.start]));
-      if (cols.end >= 0) dates.push(...datesIn(textOf(c[cols.end])));
+      let openEnded = false;
+      if (cols.end >= 0) {
+        const endDates = datesIn(textOf(c[cols.end]));
+        // A start with no readable end is open, not a single day: the page
+        // says the work has no end the reader can plan around.
+        if (endDates.length === 0 && dates.length > 0) openEnded = true;
+        dates.push(...endDates);
+      }
       if (dates.length === 0) return null;
       const lines = linesIn(c[cols.line]);
       if (lines.length === 0) return null;
-      const span = windowFrom(dates, nowMs, timeZone);
+      const span = windowFrom(dates, nowMs, timeZone, { openEnded });
       if (!span) return null;
       const impact = cols.impact >= 0 && c[cols.impact] ? textOf(c[cols.impact]) : '';
       const work = cols.work >= 0 && c[cols.work] ? textOf(c[cols.work]) : '';
@@ -341,6 +367,11 @@ function spokenDay(ms, nowMs, timeZone) {
 function describe(window, lines, nowMs, timeZone) {
   const named = window.lines.filter((l) => lines.includes(l));
   const who = spokenLines(named.length > 0 ? named : window.lines);
+  if (window.openEnded) {
+    return window.startsAt <= nowMs
+      ? `planned track work on ${who} until further notice`
+      : `planned track work on ${who} from ${spokenDay(window.startsAt, nowMs, timeZone)} until further notice`;
+  }
   if (window.startsAt <= nowMs) {
     return `planned track work on ${who} through ${spokenDay(window.endsAt, nowMs, timeZone)}`;
   }
@@ -351,9 +382,12 @@ function describe(window, lines, nowMs, timeZone) {
     : `planned track work on ${who} from ${from} through ${through}`;
 }
 
-function unknown(reason) {
+/** The unknown shape: every count null, the reason naming the failure class. */
+export function unknownTrackwork(reason) {
   return { active: null, upcoming: null, staleWindows: null, reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, unknown: true };
 }
+
+const unknown = unknownTrackwork;
 
 // Stale is distinct from unavailable, as in closures.js: the page answered,
 // and what it listed disqualifies it (rule 5).
@@ -419,36 +453,25 @@ export function sourceIsStale(windows, now = Date.now()) {
 export async function fetchTrackwork(
   lines,
   fetchImpl = fetch,
-  { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null } = {},
+  { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null, signal } = {},
 ) {
-  let response;
   try {
-    response = await fetchImpl(TRACKWORK_URL, {
-      method: 'GET',
-      headers: { Accept: 'text/html', 'User-Agent': 'switchtender/0.1' },
-    });
-  } catch (cause) {
-    return unknown(`network error (${cause?.name ?? 'Error'})`);
-  }
-  if (!response.ok) return unknown(`HTTP ${response.status}`);
+    const { text: html, error } = await getText(TRACKWORK_URL, { fetchImpl, signal });
+    if (error) return unknown(error);
 
-  let html;
-  try {
-    html = await response.text();
-  } catch {
-    return unknown('unparseable response');
-  }
+    const windows = parseTrackwork(html, { now, timeZone });
+    if (windows === null) return unknown('no readable schedule table');
+    if (sourceIsStale(windows, now)) return stale();
 
-  const windows = parseTrackwork(html, { now, timeZone });
-  if (windows === null) return unknown('no readable schedule table');
-  if (sourceIsStale(windows, now)) return stale();
-
-  if (typeof log === 'function') {
-    for (const w of windows) {
-      if (w.rolledYear) {
-        log(`trackwork: year inferred for ${w.lines.join('/')} window starting ${new Date(w.startsAt).toISOString()}`);
+    if (typeof log === 'function') {
+      for (const w of windows) {
+        if (w.rolledYear) {
+          log(`trackwork: year inferred for ${w.lines.join('/')} window starting ${new Date(w.startsAt).toISOString()}`);
+        }
       }
     }
+    return assessTrackwork(windows, lines, { now, timeZone });
+  } catch (cause) {
+    return unknown(`unexpected error (${cause?.name ?? 'Error'})`);
   }
-  return assessTrackwork(windows, lines, { now, timeZone });
 }

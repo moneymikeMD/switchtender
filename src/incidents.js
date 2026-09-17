@@ -16,6 +16,17 @@
 // config.incidents and never from source; the key is read at call time and
 // never logged; unknown is null, never 0; this signal moves confidence and the
 // spoken reason, never the verdict.
+//
+// Route matching. The box is the whole District and the drive crosses a
+// corner of it, so an accident anywhere in the box used to count as a crash
+// ahead. TomTom returns each incident's geometry (a LineString along the
+// affected road, or a Point), and assessTrajectory matches it to the decoded
+// drive polyline like closures.js and chart.js do: only an incident within
+// DEFAULT_RADIUS_METRES of the route triggers. Without route geometry the
+// whole box counts, as before, and routeMatched says so.
+
+import { getJson } from './http.js';
+import { nearPolyline } from './polyline.js';
 
 const ENDPOINT = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
 
@@ -90,6 +101,15 @@ const ACCIDENT_MIN_SEVERITY = 2;
 // calibrated model; the verdict rule decides what the number is worth.
 const SEVERITY_WEIGHT = { 0: 0.5, 1: 0.25, 2: 0.5, 3: 0.75, 4: 0.75 };
 
+// How close an incident's geometry must come to the drive polyline to count
+// as on the route. TomTom draws the incident along the road itself and the
+// route polyline follows the same carriageway, so the two lines meet within a
+// few tens of metres when they share a road; 120 m absorbs the offset between
+// opposite carriageways of a divided highway while staying under the spacing
+// of the District's street grid (150 to 200 m), so a crash one block over does
+// not count. A tuning guess, like the 300 m and 400 m in the other feeds.
+export const DEFAULT_RADIUS_METRES = 120;
+
 export class IncidentError extends Error {
   constructor(message) {
     super(message);
@@ -127,6 +147,22 @@ const clampSeverity = (value) => {
   return Math.min(n, SEVERITY_MAX);
 };
 
+// TomTom geometry is GeoJSON: coordinates are [lon, lat]. Kept as [lat, lon]
+// pairs to match the decoded route polyline. Null when absent or malformed.
+function pointsOf(geometry) {
+  const pair = (c) =>
+    Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]) ? [c[1], c[0]] : null;
+  if (geometry?.type === 'Point') {
+    const p = pair(geometry.coordinates);
+    return p ? [p] : null;
+  }
+  if (geometry?.type === 'LineString' && Array.isArray(geometry.coordinates)) {
+    const points = geometry.coordinates.map(pair).filter(Boolean);
+    return points.length > 0 ? points : null;
+  }
+  return null;
+}
+
 function normaliseOne(raw) {
   const p = raw?.properties ?? {};
   const events = Array.isArray(p.events) ? p.events : [];
@@ -144,6 +180,7 @@ function normaliseOne(raw) {
     from: typeof p.from === 'string' ? p.from : null,
     to: typeof p.to === 'string' ? p.to : null,
     startedAt: typeof p.startTime === 'string' ? p.startTime : null,
+    points: pointsOf(raw?.geometry),
   };
 }
 
@@ -161,14 +198,25 @@ export function normaliseIncidents(vendorJson) {
 
 const UNKNOWN_REASON = 'live incidents unavailable';
 
-function unknown(reason) {
+/** The unknown shape. unstable is null, not false: a failed lookup is not a steady road (rule 4). */
+export function unknownIncidents(reason) {
   return {
-    unstable: false,
+    unstable: null,
     score: null,
     count: null,
+    onRoute: null,
+    routeMatched: false,
     byCategory: {},
     reasons: [`${UNKNOWN_REASON}: ${reason}`],
   };
+}
+
+const unknown = unknownIncidents;
+
+/** True when any point of the incident's geometry lies within radiusMetres of the route. */
+export function nearRoute(points, incident, radiusMetres = DEFAULT_RADIUS_METRES) {
+  if (!Array.isArray(points) || points.length === 0 || !Array.isArray(incident?.points)) return false;
+  return incident.points.some((here) => nearPolyline(points, here, radiusMetres));
 }
 
 function isFresh(incident, now) {
@@ -204,75 +252,91 @@ function describe(incident) {
 /**
  * Reduce a list of incidents to one instability signal.
  *
- * unstable   true when a triggering accident or fresh closure exists
- * score      0..1, or null when the input is null (unknown, not clear)
- * count      incidents in the box, or null when unknown
- * byCategory incident count per normalised category
- * reasons    spoken strings, one per triggering incident
+ * unstable      true when a triggering accident or fresh closure exists on
+ *               the route (or anywhere in the box without route geometry)
+ * score         0..1, or null when the input is null (unknown, not clear)
+ * count         incidents in the box, or null when unknown
+ * onRoute       triggering incidents that matched the route
+ * routeMatched  whether route geometry was available to match against
+ * byCategory    incident count per normalised category, box-wide
+ * reasons       spoken strings, one per triggering incident
  *
  * Jams and roadworks are counted and reported but never trigger: they are
  * steady state, and the traffic-aware duration already contains them.
+ * `points` is the decoded drive polyline ([lat, lon] pairs); without it every
+ * triggering incident in the box counts, which overstates a District-wide box.
  */
-export function assessTrajectory(incidents, { now = Date.now() } = {}) {
+export function assessTrajectory(
+  incidents,
+  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
+) {
   if (!Array.isArray(incidents)) return unknown('no data');
+  const haveRoute = Array.isArray(points) && points.length > 0;
 
   const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
   const reasons = [];
   let weight = 0;
   for (const incident of incidents) {
     byCategory[incident.category] = (byCategory[incident.category] ?? 0) + 1;
-    if (triggers(incident, now)) {
-      weight += SEVERITY_WEIGHT[incident.severity] ?? SEVERITY_WEIGHT[0];
-      reasons.push(describe(incident));
-    }
+    if (!triggers(incident, now)) continue;
+    if (haveRoute && !nearRoute(points, incident, radiusMetres)) continue;
+    weight += SEVERITY_WEIGHT[incident.severity] ?? SEVERITY_WEIGHT[0];
+    reasons.push(describe(incident));
   }
   return {
     unstable: reasons.length > 0,
     score: Math.min(1, weight),
     count: incidents.length,
+    onRoute: reasons.length,
+    routeMatched: haveRoute,
     byCategory,
     reasons,
   };
 }
 
 /**
- * Fetch live incidents for the configured box and assess them.
+ * Fetch and normalise live incidents for the configured box, without
+ * assessing them, so the request can go out before routing has answered and
+ * the assessment can wait for the route polyline.
  *
+ * Returns { incidents } or { failure } where failure is the unknown shape.
  * Never throws: this is an optional signal, and losing it is a lower
- * confidence, not a missing verdict. Any failure yields the unknown shape with
- * a reason that names the failure class and never the key or the URL.
+ * confidence, not a missing verdict. Any failure names the failure class and
+ * never the key or the URL.
  */
-export async function fetchIncidents(config, apiKey, fetchImpl = fetch) {
-  if (!apiKey) return unknown('no TRAFFIC_API_KEY');
-
-  let request;
+export async function loadIncidents(config, apiKey, fetchImpl = fetch, { signal } = {}) {
   try {
-    request = incidentsRequest(config?.incidents);
+    if (!apiKey) return { failure: unknown('no TRAFFIC_API_KEY') };
+
+    let request;
+    try {
+      request = incidentsRequest(config?.incidents);
+    } catch (cause) {
+      return { failure: unknown(cause.message) };
+    }
+
+    const { data, error } = await getJson(request, { fetchImpl, query: { key: apiKey }, signal });
+    if (error) return { failure: unknown(error) };
+
+    const normalised = normaliseIncidents(data);
+    if (normalised === null) return { failure: unknown('response had no incident list') };
+    return { incidents: normalised };
   } catch (cause) {
-    return unknown(cause.message);
+    return { failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) };
   }
+}
 
-  const url = new URL(request.url);
-  for (const [k, v] of Object.entries(request.params)) url.searchParams.set(k, v);
-  url.searchParams.set('key', apiKey);
-
-  let response;
-  try {
-    response = await fetchImpl(url.toString(), { method: 'GET', headers: { Accept: 'application/json' } });
-  } catch (cause) {
-    // A network error's message can embed the URL, and the URL carries the key.
-    return unknown(`network error (${cause?.name ?? 'Error'})`);
-  }
-  if (!response.ok) return unknown(`HTTP ${response.status}`);
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    return unknown('unparseable response');
-  }
-
-  const normalised = normaliseIncidents(data);
-  if (normalised === null) return unknown('response had no incident list');
-  return assessTrajectory(normalised);
+/**
+ * Fetch live incidents for the configured box and assess them against the
+ * route. loadIncidents then assessTrajectory; see both. Never throws.
+ */
+export async function fetchIncidents(
+  config,
+  apiKey,
+  fetchImpl = fetch,
+  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES, signal } = {},
+) {
+  const loaded = await loadIncidents(config, apiKey, fetchImpl, { signal });
+  if (loaded.failure) return loaded.failure;
+  return assessTrajectory(loaded.incidents, { now, points, radiusMetres });
 }

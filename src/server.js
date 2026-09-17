@@ -17,6 +17,7 @@
 
 import { createServer as createHttpServer } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, ConfigError } from './config.js';
@@ -88,30 +89,53 @@ export function createServer({
 
   const server = createHttpServer(async (req, res) => {
     const started = process.hrtime.bigint();
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    let pathname = '?';
     res.on('finish', () => {
       const ms = Number(process.hrtime.bigint() - started) / 1e6;
       // Path and status only. Never the headers: one of them is the key.
-      logger(`${req.method} ${url.pathname} ${res.statusCode} ${ms.toFixed(0)}ms`);
+      logger(`${req.method} ${pathname} ${res.statusCode} ${ms.toFixed(0)}ms`);
     });
+    try {
+      pathname = await handle(req, res);
+    } catch (error) {
+      // The listener is async; a rejection here would be unhandled and
+      // would take the process, and with it the only instance, down.
+      logger(`request error: ${error?.message ?? error}`);
+      if (!res.headersSent) send(res, 500, { error: 'internal error' });
+      else res.destroy();
+    }
+  });
+
+  async function handle(req, res) {
+    // The request target is untrusted. llhttp accepts targets the WHATWG
+    // parser rejects ("//[::1/x"), and that rejection must be a 400, not a
+    // crash before the key is even looked at.
+    let url;
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost');
+    } catch {
+      send(res, 400);
+      return '?';
+    }
 
     // /health, not /healthz: Cloud Run's frontend answers /healthz itself with
     // an HTML 404 and the request never reaches the container.
-    if (url.pathname === '/health') {
+    const { pathname } = url;
+    if (pathname === '/health') {
       send(res, 200, 'ok', 'text/plain');
-      return;
+      return pathname;
     }
-    if (url.pathname !== '/verdict') {
+    if (pathname !== '/verdict') {
       send(res, 404);
-      return;
+      return pathname;
     }
     if (req.method !== 'GET') {
       send(res, 405);
-      return;
+      return pathname;
     }
     if (!keyMatches(req.headers[KEY_HEADER], secret)) {
       send(res, 401);
-      return;
+      return pathname;
     }
 
     // ?from=origin asks for the whole trip from home (CMB-30). Checked after
@@ -119,16 +143,19 @@ export function createServer({
     const from = url.searchParams.get('from') ?? 'fork';
     if (!START_POINTS.includes(from)) {
       send(res, 400, { error: `from must be one of ${START_POINTS.join(', ')}` });
-      return;
+      return pathname;
     }
 
     const computedAt = now();
     try {
-      const { verdict, spoken } = await withTimeout(
+      const { verdict, spoken, logged = null } = await withTimeout(
         run(config, { now: computedAt, from }),
         timeoutMs,
       );
-      send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString() });
+      // A failed sheet write is the one failure nobody would otherwise see
+      // from the phone: the verdict is fine, the tuning log just stops.
+      if (logged && !logged.ok) logger(`log failed: ${logged.error}`);
+      send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString(), logged });
     } catch (error) {
       if (error instanceof RouteError) {
         send(res, 503, { error: 'lookup failed' });
@@ -139,7 +166,8 @@ export function createServer({
         send(res, 500, { error: 'internal error' });
       }
     }
-  });
+    return pathname;
+  }
 
   // Socket-level guard behind the promise race, so a stalled client cannot
   // hold an instance open either.
@@ -184,6 +212,16 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Run only as the entry point. Resolved through realpath so a symlinked
+// launcher still starts the server instead of exiting silently.
+function isEntryPoint() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main();
 }

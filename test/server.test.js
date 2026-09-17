@@ -3,6 +3,7 @@
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { connect } from 'node:net';
 
 import { createServer, keyMatches, KEY_HEADER } from '../src/server.js';
 import { RouteError } from '../src/routes.js';
@@ -71,6 +72,7 @@ test('/verdict with the right key returns the spoken line, the verdict and a tim
     spoken: 'Take the train.',
     verdict,
     computedAt: '2026-09-16T12:00:00.000Z',
+    logged: null,
   });
   // One line per request, status and duration, never the key.
   assert.equal(lines.length, 1);
@@ -102,7 +104,59 @@ test('a pipeline that outlives the timeout is 504', async () => {
 test('unknown paths are 404 and non-GET on /verdict is 405, both before the key check', async () => {
   const { base } = await start();
   assert.equal((await fetch(`${base}/`)).status, 404);
-  assert.equal((await fetch(`${base}/verdict`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } })).status, 405);
+  // No key sent: a 401 here would mean the key check ran first.
+  assert.equal((await fetch(`${base}/verdict`, { method: 'POST' })).status, 405);
+});
+
+// Send a raw request line the HTTP parser accepts but the URL parser rejects.
+function rawRequest(base, target) {
+  const { hostname, port } = new URL(base);
+  return new Promise((resolve, reject) => {
+    const socket = connect(Number(port), hostname, () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`);
+    });
+    let data = '';
+    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('end', () => resolve(data));
+    socket.on('error', reject);
+  });
+}
+
+test('a request target the URL parser rejects is a 400, not a crashed instance', async () => {
+  const { base, lines } = await start();
+  for (const target of ['//[::1/verdict', 'http://[', 'http://[::1']) {
+    const response = await rawRequest(base, target);
+    assert.match(response, /^HTTP\/1\.1 400 /, target);
+  }
+  // The server is still up and still answering.
+  assert.equal((await fetch(`${base}/health`)).status, 200);
+  assert.ok(lines.every((l) => !l.includes('error')), lines.join('\n'));
+});
+
+test('a failed sheet write is logged by name and returned in the body; a good one is silent', async () => {
+  const failed = await start({
+    run: async () => ({ verdict, spoken: 'Take the train.', logged: { ok: false, error: 'sheets 403: The caller does not have permission' } }),
+  });
+  const res = await fetch(`${failed.base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).logged, { ok: false, error: 'sheets 403: The caller does not have permission' });
+  assert.ok(failed.lines.some((l) => l === 'log failed: sheets 403: The caller does not have permission'), failed.lines.join('\n'));
+
+  const fine = await start({ run: async () => ({ verdict, spoken: 'Take the train.', logged: { ok: true, error: null } }) });
+  await fetch(`${fine.base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
+  assert.ok(!fine.lines.some((l) => l.startsWith('log failed')));
+});
+
+test('a pipeline that throws something other than a RouteError is a 500 with the message logged, not a crash', async () => {
+  const { base, lines } = await start({
+    run: async () => {
+      throw new RangeError('Invalid time zone specified: America/Boston');
+    },
+  });
+  const res = await fetch(`${base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 500);
+  assert.ok(lines.some((l) => l.includes('Invalid time zone')));
+  assert.equal((await fetch(`${base}/health`)).status, 200);
 });
 
 test('keyMatches is constant-length and never throws on mismatched lengths', () => {

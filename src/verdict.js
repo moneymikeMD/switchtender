@@ -89,6 +89,13 @@ export function confidenceBand(confidence) {
  * @returns a plain object; every field is an input or output of the rule.
  */
 export function decide(options, decision, context = {}) {
+  // Three lists, spoken in this order and logged as one: what the decision
+  // rests on, what was found on the road, then the caveats. speak() says the
+  // first MAX_SPOKEN_REASONS clauses, so a crash ahead is heard before "no
+  // scheduled events data" is.
+  const core = [];
+  const findings = [];
+  const caveats = [];
   const degraded = context.degraded ?? [];
   const measuredFrom = options.measuredFrom ?? 'fork';
   const driveMinutes = options.driveThrough.totalSeconds / 60;
@@ -110,20 +117,20 @@ export function decide(options, decision, context = {}) {
     : marginMinutes >= requiredMarginMinutes;
   const choice = beatsMargin ? 'drive' : 'transit';
 
-  const reasons = [];
-  const savedBy = Math.abs(Math.round(marginMinutes));
+  // The spoken figure is the difference of the spoken minutes, so "30 against
+  // 33" is never followed by "2 minutes faster"; the rule itself uses the
+  // exact margin. A difference that rounds away is "about the same".
+  const savedBy = Math.abs(Math.round(transitMinutes) - Math.round(driveMinutes));
   if (choice === 'drive') {
-    reasons.push(
+    core.push(
       `driving saves ${savedBy} minutes, more than the ${Math.round(requiredMarginMinutes)} needed`,
     );
-  } else if (marginMinutes <= 0) {
-    reasons.push(
-      marginMinutes === 0
-        ? 'both options take the same time, and transit wins ties'
-        : `transit is ${savedBy} minutes faster`,
-    );
+  } else if (savedBy === 0) {
+    core.push('both options take about the same time, and transit wins ties');
+  } else if (marginMinutes < 0) {
+    core.push(`transit is ${savedBy} minutes faster`);
   } else {
-    reasons.push(
+    core.push(
       `driving saves only ${savedBy} minutes, less than the ${Math.round(requiredMarginMinutes)} needed`,
     );
   }
@@ -132,44 +139,50 @@ export function decide(options, decision, context = {}) {
 
   if (congestionUnknown) {
     confidence -= PENALTY_UNKNOWN_CONGESTION;
-    reasons.push('congestion on the road ahead is unknown');
+    core.push('congestion on the road ahead is unknown');
   } else if (congestionScore >= 0.5) {
-    reasons.push('the road ahead is jammed');
+    core.push('the road ahead is jammed');
   } else if (congestionScore >= 0.15) {
-    reasons.push('the road ahead is slow');
+    core.push('the road ahead is slow');
   } else {
-    reasons.push('the road ahead is clear');
+    core.push('the road ahead is clear');
   }
 
   if (Math.abs(marginMinutes - requiredMarginMinutes) < CLOSE_CALL_MINUTES) {
     confidence -= PENALTY_CLOSE_CALL;
-    reasons.push('it is a close call');
+    caveats.push('it is a close call');
   }
 
+  // Signals with no module to report on them. The engine passes nothing
+  // here: every optional feed now reports its own missing key as an unknown
+  // result, so it is charged once, by the branch below that reads it.
   for (const signal of degraded) {
     confidence -= PENALTY_PER_DEGRADED_SIGNAL;
-    reasons.push(`no ${signal} data`);
+    caveats.push(`no ${signal} data`);
   }
 
   // Live incidents (CMB-22): a trajectory signal, not a duration. An active
   // crash or a fresh closure on the remaining road means the drive estimate
-  // is unstable, so confidence drops and the incident is the spoken reason.
-  // It never touches the choice. Absent context.incidents means the lookup was
-  // not attempted (no key), which `degraded` already accounts for.
+  // is unstable, so confidence drops and the incident is the spoken reason,
+  // folded into one clause so the crash itself is heard within the cap. It
+  // never touches the choice. Absent context.incidents means the lookup was
+  // not consulted at all; a lookup that was tried and failed (no key, or an
+  // error) arrives with score null and is charged here. roadUnstable is null
+  // then: unknown is not steady (rule 4).
   const incidents = context.incidents ?? null;
   let incidentsScore = null;
-  let roadUnstable = false;
+  let roadUnstable = incidents ? null : false;
   if (incidents) {
     if (incidents.score === null) {
       confidence -= PENALTY_UNKNOWN_INCIDENTS;
-      reasons.push(incidents.reasons?.[0] ?? 'live incidents unavailable');
+      caveats.push(incidents.reasons?.[0] ?? 'live incidents unavailable');
     } else {
       incidentsScore = Math.round(incidents.score * 100) / 100;
       roadUnstable = Boolean(incidents.unstable);
       if (roadUnstable) {
         confidence -= PENALTY_UNSTABLE_ROAD;
-        reasons.push('the drive estimate is unstable');
-        reasons.push(...(incidents.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+        const what = (incidents.reasons ?? []).slice(0, MAX_INCIDENT_REASONS).join('; ');
+        findings.push(what ? `the drive estimate is unstable: ${what}` : 'the drive estimate is unstable');
       }
     }
   }
@@ -185,10 +198,10 @@ export function decide(options, decision, context = {}) {
   if (closures) {
     if (closures.active === null) {
       confidence -= PENALTY_UNKNOWN_FEED;
-      reasons.push(closures.reasons?.[0] ?? 'planned closures unavailable');
+      caveats.push(closures.reasons?.[0] ?? 'planned closures unavailable');
     } else if (closures.active > 0) {
       confidence -= PENALTY_ROUTE_DISRUPTION;
-      reasons.push(closures.reasons?.[0] ?? `${closures.active} planned road closures near the destination`);
+      findings.push(closures.reasons?.[0] ?? `${closures.active} planned road closures near the destination`);
     }
   }
 
@@ -197,10 +210,10 @@ export function decide(options, decision, context = {}) {
   if (maryland) {
     if (maryland.onRoute === null) {
       confidence -= PENALTY_UNKNOWN_FEED;
-      reasons.push(maryland.reasons?.[0] ?? 'maryland incidents unavailable');
+      caveats.push(maryland.reasons?.[0] ?? 'maryland incidents unavailable');
     } else if (maryland.onRoute > 0) {
       confidence -= PENALTY_ROUTE_DISRUPTION;
-      reasons.push(maryland.reasons?.[0] ?? `${maryland.onRoute} maryland records on the route`);
+      findings.push(maryland.reasons?.[0] ?? `${maryland.onRoute} maryland records on the route`);
     }
   }
 
@@ -212,10 +225,10 @@ export function decide(options, decision, context = {}) {
   if (events) {
     if (events.unknown) {
       confidence -= PENALTY_UNKNOWN_FEED;
-      reasons.push(events.reasons?.[0] ?? 'scheduled events unavailable');
+      caveats.push(events.reasons?.[0] ?? 'scheduled events unavailable');
     } else if (events.evening > 0) {
       confidence -= PENALTY_EVENING_EVENT;
-      reasons.push(...(events.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+      findings.push(...(events.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
     }
   }
 
@@ -227,13 +240,14 @@ export function decide(options, decision, context = {}) {
   if (trackwork) {
     if (trackwork.unknown) {
       confidence -= PENALTY_UNKNOWN_FEED;
-      reasons.push(trackwork.reasons?.[0] ?? 'track work schedule unavailable');
+      caveats.push(trackwork.reasons?.[0] ?? 'track work schedule unavailable');
     } else if (trackwork.active > 0) {
       confidence -= PENALTY_TRACK_WORK;
-      reasons.push(...(trackwork.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+      findings.push(...(trackwork.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
     }
   }
 
+  const reasons = [...core, ...findings, ...caveats];
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
   // Arrival at the destination door for each option (CMB-32). Needs a clock
@@ -292,9 +306,9 @@ export function speak(verdict) {
   const clock = verdict.choice === 'drive' ? verdict.driveArrivalClock : verdict.transitArrivalClock;
   const arrival = clock ? `You would arrive at ${clock}.` : '';
   // At most MAX_SPOKEN_REASONS clauses are said aloud (owner decision
-  // 2026-09-16); the full list stays on the verdict object for the log. The
-  // first clause is always the time margin, so the cap trims signals, never
-  // the core of the decision.
+  // 2026-09-16); the full list stays on the verdict object for the log.
+  // decide() orders them core, findings, caveats, so the cap trims caveats
+  // ("no X data", "it is a close call") before anything found on the road.
   const spokenReasons = verdict.reasons.slice(0, MAX_SPOKEN_REASONS);
   const reason = spokenReasons.length > 0 ? `${capitalise(spokenReasons.join(', '))}.` : '';
   const confidence = `Confidence is ${confidenceBand(verdict.confidence)}.`;

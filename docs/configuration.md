@@ -96,17 +96,34 @@ verdict and the fork. This wants verifying in the car at real speed.
 | Key | Meaning |
 | --- | --- |
 | `transit_wins_ties` | A tie means the model cannot tell the options apart. The train is the one whose duration does not degrade while you sit in it. |
-| `minimum_drive_margin_minutes` | Floor on how much faster driving must be. The required margin scales above this with the congestion signal. |
-| `assumed_evening_departure` | Used only when something about the evening is already known. |
+| `minimum_drive_margin_minutes` | Floor on how much faster driving must be, zero or more. The required margin scales above this with the congestion signal. |
+| `assumed_evening_departure` | `"HH:MM"` on a 24-hour clock. Used only when something about the evening is already known. |
+
+Every value is checked at startup: a time zone the runtime does not know, a
+`nan` or `inf` where a number belongs, a clock time that is not `HH:MM`, or a
+venue coordinate out of range is a config error before any routing call is
+paid for, not a failed verdict on the first morning.
 
 On that last point: a morning verdict commits you to how you get home, so a
 scheduled evening event is legitimately in scope. An afternoon crash is not,
 and the tool does not guess at it.
 
+### `[transit]`
+
+`lines` names the Metrorail lines the transit leg rides, matched against
+WMATA's planned track-work page. Any spelling the page would recognise loads
+as the page's own (`"red"`, `"Red Line"` and `"RED"` all become `Red`); a
+line the page does not list is a startup error, because a misspelt line would
+otherwise report "no track work" on every run. Leave the list empty and the
+signal stays quiet.
+
 ### `[incidents]`
 
-A bounding box for the live incident query, covering the part of the route the
-regional feed does not reach.
+A bounding box for the live incident feed and the District closure feed,
+covering the part of the route the regional feed does not reach. The box is
+applied to the closure records here, not on the server; the live incidents
+and the closures inside it are then matched to the drive polyline, so only
+what sits on the road ahead counts.
 
 Keep it tight to the route. A box drawn generously around one end of a commute
 is a way of publishing a home address, which is exactly what the rest of this
@@ -142,9 +159,12 @@ environment:
 | `ROUTES_API_KEY` | Driving and transit durations |
 | `TRAFFIC_API_KEY` | Live incidents on the unreached portion of the route |
 | `EVENTS_API_KEY` | Scheduled events at the configured venues |
-| `TRANSIT_API_KEY` | Rail alerts |
 
-A missing optional key degrades one signal and lowers confidence. It never
-blocks a verdict. A missing required key fails loudly at startup rather than
+`TRANSIT_API_KEY` (WMATA rail alerts) is provisioned by the deploy script but
+nothing reads it yet; the engine neither scores its absence nor its presence
+until the rail-alerts module exists.
+
+A missing optional key degrades one signal and lowers confidence, charged once
+as that signal's own "unavailable" result. It never blocks a verdict. A missing required key fails loudly at startup rather than
 silently producing a worse answer, because a tool that quietly stops
 considering traffic is worse than one that refuses to start.

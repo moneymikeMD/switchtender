@@ -93,16 +93,27 @@ add_secret_version_from_stdin() {
   fi
 }
 
-# API keys: 1Password item -> stdin -> Secret Manager. op read prints the
-# value to stdout only, which is piped straight into gcloud.
-op read "op://${OP_VAULT}/Switchtender/gcp routes api key" \
+# Read a 1Password field, refusing an empty value. A failed `op read` piped
+# straight into `gcloud secrets create` used to leave a secret with no
+# version behind, which secret_exists then reported as healthy on every
+# later run. The value goes through a shell variable, never argv; it is
+# handed on through stdin.
+op_value() {
+  local value
+  value="$(op read "$1")" || die "op read failed for $1"
+  [ -n "$value" ] || die "op read returned nothing for $1"
+  printf '%s' "$value"
+}
+
+# API keys: 1Password item -> Secret Manager, via stdin.
+op_value "op://${OP_VAULT}/Switchtender/gcp routes api key" \
   | create_secret_from_stdin switchtender-routes-api-key
-op read "op://${OP_VAULT}/TomTom Developer/api key" \
+op_value "op://${OP_VAULT}/TomTom Developer/api key" \
   | create_secret_from_stdin switchtender-traffic-api-key
-op read "op://${OP_VAULT}/Wmata API/api key" \
+op_value "op://${OP_VAULT}/Wmata API/api key" \
   | create_secret_from_stdin switchtender-transit-api-key
 # The Ticketmaster item title carries a trailing space, so it is addressed by id.
-op read "op://${OP_VAULT}/vvcgqbcehm2ccrfcg574wdrhci/credentials/consumer key" \
+op_value "op://${OP_VAULT}/vvcgqbcehm2ccrfcg574wdrhci/credentials/consumer key" \
   | create_secret_from_stdin switchtender-events-api-key
 
 # Shared secret. Source of truth is the 1Password item; Secret Manager holds
@@ -126,9 +137,9 @@ mint_shared_secret() {
 }
 if [ "$rotate_secret" = 1 ] || ! op read "$shared_path" >/dev/null 2>&1; then
   mint_shared_secret
-  op read "$shared_path" | add_secret_version_from_stdin switchtender-shared-secret
+  op_value "$shared_path" | add_secret_version_from_stdin switchtender-shared-secret
 else
-  op read "$shared_path" | create_secret_from_stdin switchtender-shared-secret
+  op_value "$shared_path" | create_secret_from_stdin switchtender-shared-secret
 fi
 
 # The commute description. Gitignored, never in the image; mounted as a file.

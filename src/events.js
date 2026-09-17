@@ -44,7 +44,8 @@
 // moves confidence and the spoken reason, never the verdict.
 
 import { haversineMetres } from './polyline.js';
-import { fetchMlbGames } from './mlb.js';
+import { getJson } from './http.js';
+import { fetchMlbGames, MLB_UNAVAILABLE } from './mlb.js';
 
 const BASE = 'https://app.ticketmaster.com/discovery/v2';
 const VENUES_ENDPOINT = `${BASE}/venues.json`;
@@ -202,7 +203,8 @@ export function normaliseEvents(vendorJson) {
 
 const UNKNOWN_REASON = 'scheduled events unavailable';
 
-function unknown(reason) {
+/** The unknown shape: every count null, the reason naming the failure class. */
+export function unknownEvents(reason) {
   return {
     count: null,
     evening: null,
@@ -213,6 +215,8 @@ function unknown(reason) {
     unknown: true,
   };
 }
+
+const unknown = unknownEvents;
 
 /**
  * Match a normalised event back to a configured venue. By vendor id when the
@@ -343,28 +347,10 @@ export function assessEvents(events, venues, { now = Date.now(), timeZone, eveni
   };
 }
 
-async function getJson(request, apiKey, fetchImpl) {
-  const url = new URL(request.url);
-  for (const [k, v] of Object.entries(request.params)) url.searchParams.set(k, v);
-  url.searchParams.set('apikey', apiKey);
-
-  let response;
-  try {
-    response = await fetchImpl(url.toString(), { method: 'GET', headers: { Accept: 'application/json' } });
-  } catch (cause) {
-    // A network error's message can embed the URL, and the URL carries the key.
-    return { error: `network error (${cause?.name ?? 'Error'})` };
-  }
-  if (!response.ok) return { error: `HTTP ${response.status}` };
-  try {
-    return { data: await response.json() };
-  } catch {
-    return { error: 'unparseable response' };
-  }
-}
+const getTicketed = (request, apiKey, fetchImpl, signal) =>
+  getJson(request, { fetchImpl, query: { apikey: apiKey }, signal });
 
 const providerOf = (venue) => venue?.provider ?? 'ticketmaster';
-const MLB_UNAVAILABLE = 'ballpark schedule unavailable';
 
 /**
  * The Ticketmaster half of fetchEvents: resolve venues to vendor ids and
@@ -372,7 +358,7 @@ const MLB_UNAVAILABLE = 'ballpark schedule unavailable';
  * error }. `events` is null and `error` set when the source could not
  * answer; a venue the vendor does not know lands in `unresolved`.
  */
-async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone }) {
+async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, signal }) {
   const resolved = [];
   const unresolved = [];
   for (const venue of venues) {
@@ -382,7 +368,7 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone }) {
     } catch (cause) {
       return { events: null, resolved: [], unresolved: [], error: cause.message };
     }
-    const { data, error } = await getJson(request, apiKey, fetchImpl);
+    const { data, error } = await getTicketed(request, apiKey, fetchImpl, signal);
     if (error) return { events: null, resolved: [], unresolved: [], error: `venue lookup ${error}` };
     const records = normaliseVenues(data);
     if (records === null) {
@@ -405,7 +391,7 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone }) {
   } catch (cause) {
     return { events: null, resolved: [], unresolved, error: cause.message };
   }
-  const { data, error } = await getJson(request, apiKey, fetchImpl);
+  const { data, error } = await getTicketed(request, apiKey, fetchImpl, signal);
   if (error) return { events: null, resolved: [], unresolved, error };
   const events = normaliseEvents(data);
   if (events === null) return { events: null, resolved: [], unresolved, error: 'response had no event list' };
@@ -416,34 +402,47 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone }) {
  * Fetch today's events at the configured venues, each from its provider,
  * merge, and assess. Returns the assessment with `resolved` (venues whose
  * source answered and, for Ticketmaster, matched a vendor record),
- * `unresolved` (configured names that got no answer) and `notes` (one line
- * per source that was skipped or failed, kept apart from `reasons` because
- * the verdict speaks `reasons`) added.
+ * `unresolved` (configured names that got no answer), `notes` (one line per
+ * source that was skipped or failed, kept apart from `reasons` because the
+ * verdict speaks `reasons`) and `partial` (true when some source did not
+ * answer) added.
  *
  * Never throws: this is an optional signal, and losing it is a lower
- * confidence, not a missing verdict. A source failing yields unresolved
- * venues and a note, never a thrown error and never a zero. The whole signal
- * is unknown only when no source answered at all, because "no events" would
- * then be a guess. A missing EVENTS_API_KEY skips the Ticketmaster venues and
- * leaves the mlb venues working: the keyless source is the point of it. No
- * reason ever carries the key or a URL.
+ * confidence, not a missing verdict. No reason ever carries the key or a URL.
+ *
+ * When a source fails (or the Ticketmaster venues are skipped for want of
+ * EVENTS_API_KEY), the venues it covered are unknown, and unknown is not
+ * clear (rule 4). So the merged answer is a real count only when it is
+ * positive: an event the other source did find is still an event tonight,
+ * spoken and penalised as usual, with the failure in `notes`. A zero from the
+ * sources that answered says nothing about the ones that did not, so it is
+ * the unknown shape, with the first failure as the spoken reason. The
+ * keyless mlb provider is the point of the split: with no key and an mlb
+ * venue, the ballpark still answers, and a game there is still heard.
  */
-export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now() } = {}) {
+export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now(), signal } = {}) {
+  try {
+    return await fetchEventsInner(config, apiKey, fetchImpl, { now, signal });
+  } catch (cause) {
+    return { ...unknown(`unexpected error (${cause?.name ?? 'Error'})`), resolved: [], unresolved: [], notes: [], partial: false };
+  }
+}
+
+async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal }) {
   const venues = Array.isArray(config?.venues) ? config.venues : [];
   const ticketed = venues.filter((v) => providerOf(v) === 'ticketmaster');
   const ballparks = venues.filter((v) => providerOf(v) === 'mlb');
-  if (!apiKey && ballparks.length === 0) return unknown('no EVENTS_API_KEY');
+  const bare = (shape) => ({ ...shape, resolved: [], unresolved: [], notes: [], partial: false });
+  if (!apiKey && ballparks.length === 0) return bare(unknown('no EVENTS_API_KEY'));
 
   const timeZone = config?.route?.timezone;
   const eveningDeparture = config?.decision?.assumed_evening_departure;
   // Fail before spending requests on a question the assessment cannot answer.
   if (!timeZone || departureInstant(now, timeZone, eveningDeparture) === null) {
-    return unknown('no assumed evening departure');
+    return bare(unknown('no assumed evening departure'));
   }
   const clock = { now, timeZone, eveningDeparture };
-  if (venues.length === 0) {
-    return { ...assessEvents([], [], clock), resolved: [], unresolved: [], notes: [] };
-  }
+  if (venues.length === 0) return bare(assessEvents([], [], clock));
 
   const events = [];
   const matched = [];
@@ -457,8 +456,9 @@ export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Dat
     if (!apiKey) {
       unresolved.push(...ticketed.map((v) => v.name));
       notes.push('ticketing source skipped: no EVENTS_API_KEY');
+      failures.push('no EVENTS_API_KEY');
     } else {
-      const tm = await fetchTicketmaster(ticketed, apiKey, fetchImpl, clock);
+      const tm = await fetchTicketmaster(ticketed, apiKey, fetchImpl, { ...clock, signal });
       unresolved.push(...tm.unresolved);
       if (tm.error) {
         // A ticketing failure takes every ticketed venue with it; the
@@ -476,7 +476,7 @@ export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Dat
   }
 
   for (const venue of ballparks) {
-    const { events: games, reason } = await fetchMlbGames(venue, fetchImpl, { now, timeZone });
+    const { events: games, reason } = await fetchMlbGames(venue, fetchImpl, { now, timeZone, signal });
     if (games === null) {
       unresolved.push(venue.name);
       notes.push(`${venue.name}: ${reason}`);
@@ -489,12 +489,15 @@ export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Dat
     resolved.push(venue.name);
   }
 
-  if (answered === 0) {
+  const partial = failures.length > 0;
+  const assessment = answered === 0 ? null : assessEvents(events, matched, clock);
+  if (assessment === null || (partial && assessment.evening === 0)) {
     const why = failures[0] ?? 'no configured venue matched a vendor record';
     const shape = unknown(why);
     // A ballpark failure already names itself; do not prefix it twice.
     if (why.startsWith(MLB_UNAVAILABLE)) shape.reasons = [why];
-    return { ...shape, resolved: [], unresolved, notes };
+    // What did answer is kept for the log; the counts stay null.
+    return { ...shape, resolved, unresolved, notes, partial };
   }
-  return { ...assessEvents(events, matched, clock), resolved, unresolved, notes };
+  return { ...assessment, resolved, unresolved, notes, partial };
 }

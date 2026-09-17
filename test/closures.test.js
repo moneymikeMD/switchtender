@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 
 import {
   closuresRequest,
+  checkBox,
+  inBox,
   livenessRequest,
   normaliseClosures,
   newestEffective,
@@ -15,6 +17,7 @@ import {
   spokenAddress,
   nearRoute,
   assessClosures,
+  loadClosures,
   fetchClosures,
   CLOSURE_LAYERS,
   LIVENESS_LAYER,
@@ -37,9 +40,14 @@ const routes = JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'u
 const NOW = Date.parse('2026-09-16T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
 
-// Not a real place. Any box works; the point is that it flows through.
+// Not a real place: a box around the synthetic Boston route below. The box
+// is applied client side now, so the fetch tests that read the recorded
+// District permits use a box around the District instead (public bounds, not
+// a commute).
 const bbox = { min_lon: -71.2, min_lat: 42.3, max_lon: -71.0, max_lat: 42.5 };
 const config = { incidents: bbox };
+const dcBox = { min_lon: -77.12, min_lat: 38.79, max_lon: -76.9, max_lat: 39.0 };
+const dcConfig = { incidents: dcBox };
 
 // The synthetic Boston-area drive from the routes fixture: 15 vertices due
 // north along one meridian, 50 m apart for the first ten and about 2 km apart
@@ -61,15 +69,12 @@ function permitAt([lat, lon], address) {
   };
 }
 
-test('the closure request takes its envelope from the argument, WGS84, layer 11 flags closures', () => {
-  const { url, params } = closuresRequest(bbox, 11);
+test('the closure request carries no server-side envelope (it cost 6 s for nothing), WGS84 out, layer 11 flags closures', () => {
+  const { url, params } = closuresRequest(11);
   assert.equal(url, 'https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/FeatureServer/11/query');
-  const geometry = JSON.parse(params.geometry);
-  assert.deepEqual(geometry, {
-    xmin: -71.2, ymin: 42.3, xmax: -71.0, ymax: 42.5, spatialReference: { wkid: 4326 },
-  });
-  assert.equal(params.geometryType, 'esriGeometryEnvelope');
-  assert.equal(params.inSR, '4326');
+  for (const spatial of ['geometry', 'geometryType', 'inSR', 'spatialRel']) {
+    assert.equal(spatial in params, false, `no ${spatial}: the box is applied client side`);
+  }
   assert.equal(params.f, 'json');
   assert.match(params.where, /IsRoadClosed = 'Y'/);
   assert.match(params.where, /StatusDescription = 'Issued'/);
@@ -82,17 +87,31 @@ test('the closure request takes its envelope from the argument, WGS84, layer 11 
 });
 
 test('layer 10 has no closure flag, so its request filters on issued status only', () => {
-  const { url, params } = closuresRequest(bbox, 10);
+  const { url, params } = closuresRequest(10);
   assert.match(url, /\/10\/query$/);
   assert.equal(params.where, "StatusDescription = 'Issued'");
   assert.equal(params.outFields.includes('IsRoadClosed'), false);
 });
 
-test('a missing box key or a history layer is a ClosureError, not a silent District-wide query', () => {
-  assert.throws(() => closuresRequest({ min_lon: -71.2, min_lat: 42.3, max_lon: -71.0 }, 11), ClosureError);
-  assert.throws(() => closuresRequest(undefined, 11), ClosureError);
-  assert.throws(() => closuresRequest(bbox, 0), ClosureError);
-  assert.throws(() => closuresRequest(bbox, 1), ClosureError);
+test('a missing box key or a history layer is a ClosureError, not a silent District-wide count', () => {
+  assert.throws(() => checkBox({ min_lon: -71.2, min_lat: 42.3, max_lon: -71.0 }), ClosureError);
+  assert.throws(() => checkBox(undefined), ClosureError);
+  assert.throws(() => closuresRequest(0), ClosureError);
+  assert.throws(() => closuresRequest(1), ClosureError);
+});
+
+test('inBox is the client-side envelope: inside counts, outside and unplaceable do not', () => {
+  assert.equal(inBox({ lat: 42.4, lon: -71.1 }, bbox), true);
+  assert.equal(inBox({ lat: 42.3, lon: -71.2 }, bbox), true, 'edges are inside');
+  assert.equal(inBox({ lat: 38.9, lon: -77.0 }, bbox), false);
+  assert.equal(inBox({ lat: null, lon: -71.1 }, bbox), false);
+  assert.equal(inBox({ lat: 42.4, lon: null }, bbox), false);
+});
+
+test('an empty date string is absent, not the epoch', () => {
+  const [r] = normaliseClosures({ features: [{ attributes: { IsRoadClosed: 'Y', EffectiveDate: '', ExpirationDate: '' } }] }, 11);
+  assert.equal(r.effectiveAt, null);
+  assert.equal(r.expiresAt, null);
 });
 
 test('the liveness request is a max over EffectiveDate across the whole layer', () => {
@@ -364,16 +383,16 @@ function stubFrom({ liveness: live = liveness, layers = { 11: l11, 10: l10 } } =
   return { stub, seen };
 }
 
-test('fetch runs liveness and the closure layers in parallel from the config box and assesses', async () => {
+test('fetch runs liveness and the closure layers in parallel, keeps the records in the config box, and assesses', async () => {
   const { stub, seen } = stubFrom();
-  const result = await fetchClosures(config, stub, { now: NOW });
+  const result = await fetchClosures(dcConfig, stub, { now: NOW });
   assert.equal(seen.length, 1 + CLOSURE_LAYERS.length);
   const livenessCalls = seen.filter((u) => u.searchParams.has('outStatistics'));
   assert.equal(livenessCalls.length, 1);
   assert.match(livenessCalls[0].pathname, new RegExp(`/${LIVENESS_LAYER}/query$`));
   const closureCalls = seen.filter((u) => !u.searchParams.has('outStatistics'));
   for (const u of closureCalls) {
-    assert.deepEqual(JSON.parse(u.searchParams.get('geometry')).xmin, -71.2);
+    assert.equal(u.searchParams.has('geometry'), false, 'no envelope on the wire');
   }
   assert.equal(result.sourceLive, true);
   assert.ok(result.active > 0);
@@ -385,12 +404,45 @@ test('fetch runs liveness and the closure layers in parallel from the config box
 
 test('fetch passes the route points through: a Boston route matches none of the District permits, the box total stays', async () => {
   const { stub } = stubFrom();
-  const result = await fetchClosures(config, stub, { now: NOW, points: route });
+  const result = await fetchClosures(dcConfig, stub, { now: NOW, points: route });
   assert.equal(result.sourceLive, true);
   assert.equal(result.active, 0);
   assert.ok(result.total > 0);
   assert.deepEqual(result.addresses, []);
   assert.deepEqual(result.reasons, []);
+});
+
+test('the box is applied client side: a Boston box holds none of the District permits, and loadClosures returns records for a later assess', async () => {
+  const { stub } = stubFrom();
+  const boston = await fetchClosures(config, stub, { now: NOW, points: route });
+  assert.equal(boston.total, 0);
+  assert.equal(boston.active, 0);
+
+  const loaded = await loadClosures(dcConfig, stub, { now: NOW });
+  assert.equal(loaded.failure, undefined);
+  assert.equal(loaded.sourceLive, true);
+  assert.equal(loaded.records.length, 20);
+  const assessed = assessClosures(loaded.records, { now: NOW, sourceLive: true, points: route });
+  assert.deepEqual(assessed, await fetchClosures(dcConfig, stub, { now: NOW, points: route }));
+});
+
+test('a layer page the server cut short is unknown, not a short count', async () => {
+  const { stub } = stubFrom({ layers: { 11: { ...l11, exceededTransferLimit: true }, 10: l10 } });
+  const result = await fetchClosures(dcConfig, stub, { now: NOW });
+  assert.equal(result.active, null);
+  assert.match(result.reasons[0], /cut short/);
+});
+
+test('the deadline rides along on every request, and a fetch that throws synchronously is unknown', async () => {
+  const inits = [];
+  const signal = AbortSignal.timeout(10_000);
+  const { stub } = stubFrom();
+  await fetchClosures(dcConfig, async (url, init) => { inits.push(init); return stub(url); }, { now: NOW, signal });
+  assert.equal(inits.length, 2);
+  assert.ok(inits.every((i) => i.signal === signal));
+  const broken = await fetchClosures(dcConfig, () => { throw new RangeError('no'); }, { now: NOW });
+  assert.equal(broken.active, null);
+  assert.match(broken.reasons[0], /\(RangeError\)/);
 });
 
 test('fetch with points: a permit placed on the route is counted and spoken, one off it is only in the total', async () => {
@@ -415,7 +467,7 @@ test('fetch with points: a permit placed on the route is counted and spoken, one
 
 test('a source whose newest record is older than the current month is stale, however many records it has', async () => {
   const { stub } = stubFrom();
-  const result = await fetchClosures(config, stub, { now: Date.parse('2026-11-16T12:00:00Z'), points: route });
+  const result = await fetchClosures(dcConfig, stub, { now: Date.parse('2026-11-16T12:00:00Z'), points: route });
   assert.equal(result.active, null);
   assert.equal(result.total, null);
   assert.deepEqual(result.addresses, []);

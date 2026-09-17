@@ -5,7 +5,8 @@
 # `switchtender.verdicts` with source format GOOGLE_SHEETS, reading the tab
 # named in SHEET_TAB (default: verdicts), skipping the header row.
 #
-# The schema is generated from HEADER in src/log.js, so the two cannot drift.
+# The schema is generated from FULL_HEADER in src/log.js (the frozen HEADER
+# plus EXTRA_COLUMNS), so the two cannot drift.
 # Every column is STRING for v1: the Sheet stores cells as text (RAW), the
 # log is about 500 rows a year, and CAST() in the query is cheaper than a
 # type mismatch that silently drops rows. Tighten types once the columns
@@ -53,7 +54,7 @@ def="$workdir/verdicts.def.json"
 # Schema from the single source of truth. Note the table definition file, not
 # argv, carries the sheet id, so it never shows up in `ps` or shell history.
 node --input-type=module - "$SHEET_ID" "$SHEET_TAB" >"$def" <<'EOF'
-import { HEADER } from './src/log.js';
+import { FULL_HEADER as HEADER } from './src/log.js';
 const [sheetId, tab] = process.argv.slice(2);
 const def = {
   sourceFormat: 'GOOGLE_SHEETS',
@@ -65,7 +66,7 @@ const def = {
 process.stdout.write(JSON.stringify(def, null, 2));
 EOF
 
-echo "schema: $(node --input-type=module -e "import { HEADER } from './src/log.js'; console.log(HEADER.length)") STRING columns from src/log.js HEADER"
+echo "schema: $(node --input-type=module -e "import { FULL_HEADER } from './src/log.js'; console.log(FULL_HEADER.length)") STRING columns from src/log.js FULL_HEADER"
 
 if ! bq --project_id="$PROJECT" show --format=none "$DATASET" >/dev/null 2>&1; then
   echo "creating dataset $PROJECT:$DATASET in $LOCATION"

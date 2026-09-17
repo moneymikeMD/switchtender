@@ -161,7 +161,7 @@ const unstableBox = {
   byCategory: {},
   reasons: ['accident on Example Pkwy to Sample St, 9 minutes of delay', 'second', 'third'],
 };
-const unknownBox = { unstable: false, score: null, count: null, byCategory: {}, reasons: ['live incidents unavailable: HTTP 500'] };
+const unknownBox = { unstable: null, score: null, count: null, byCategory: {}, reasons: ['live incidents unavailable: HTTP 500'] };
 
 test('a steady incident box changes nothing but records the score', () => {
   const clean = decide(options(30, 60, 0), decision);
@@ -180,10 +180,11 @@ test('an unstable road lowers confidence, speaks at most two incident reasons, a
   assert.ok(v.confidence < clean.confidence);
   assert.equal(v.roadUnstable, true);
   assert.equal(v.incidentsScore, 0.75);
-  assert.ok(v.reasons.includes('the drive estimate is unstable'));
-  assert.ok(v.reasons.includes(unstableBox.reasons[0]));
-  assert.ok(v.reasons.includes('second'));
-  assert.ok(!v.reasons.includes('third'));
+  // One clause, so the crash itself survives the spoken cap.
+  const clause = v.reasons.find((r) => r.startsWith('the drive estimate is unstable'));
+  assert.equal(clause, `the drive estimate is unstable: ${unstableBox.reasons[0]}; second`);
+  assert.ok(!clause.includes('third'));
+  assert.ok(speak(v).includes(unstableBox.reasons[0]), 'the crash is heard');
 });
 
 test('a failed incident lookup is unknown, not clear: small penalty, reason, null score', () => {
@@ -192,7 +193,7 @@ test('a failed incident lookup is unknown, not clear: small penalty, reason, nul
   assert.equal(v.choice, clean.choice);
   assert.ok(v.confidence < clean.confidence);
   assert.equal(v.incidentsScore, null);
-  assert.equal(v.roadUnstable, false);
+  assert.equal(v.roadUnstable, null, 'unknown is not steady (rule 4)');
   assert.ok(v.reasons.some((r) => r.startsWith('live incidents unavailable')));
 });
 
@@ -299,6 +300,43 @@ test('speak says at most three reason clauses and keeps the rest for the log', (
   assert.ok(line.toLowerCase().includes(v.reasons[0].toLowerCase()));
   assert.ok(line.includes(v.reasons[2]));
   assert.ok(!line.includes(v.reasons[3]));
+});
+
+test('findings are spoken before caveats, so a crash ahead beats "no X data" and a close call for the three slots', () => {
+  // A close call (margin 6.5 against 5 needed), a failed events feed and a
+  // crash: the crash must be heard.
+  const v = decide(options(23.5, 30, 0), decision, {
+    degraded: ['rail alerts'],
+    incidents: unstableBox,
+    events: noEvents,
+    trackwork: singleTracking,
+  });
+  assert.ok(v.reasons.some((r) => r === 'it is a close call'));
+  const line = speak(v);
+  assert.ok(line.includes('the drive estimate is unstable: accident on Example Pkwy'), line);
+  assert.ok(!line.includes('close call'), line);
+  assert.ok(!line.includes('no rail alerts data'), line);
+  assert.ok(!line.includes('scheduled events unavailable'), line);
+  // Logged in full, core then findings then caveats.
+  const firstCaveat = v.reasons.findIndex((r) => r === 'it is a close call');
+  const lastFinding = v.reasons.findIndex((r) => r === singleTracking.reasons[0]);
+  assert.ok(lastFinding < firstCaveat);
+  assert.ok(v.reasons.includes('no rail alerts data'));
+  assert.ok(v.reasons.some((r) => r.startsWith('scheduled events unavailable')));
+});
+
+test('the spoken saving is the difference of the spoken minutes, and a difference that rounds away is "about the same"', () => {
+  // 30.4 against 32.6: spoken as 30 and 33, so the saving is 3, not 2.
+  const v = decide(options(30.4, 32.6, 0), decision, {});
+  assert.equal(v.driveMinutes, 30);
+  assert.equal(v.transitMinutes, 33);
+  assert.equal(v.marginMinutes, 2.2);
+  assert.ok(v.reasons[0].includes('driving saves only 3 minutes'), v.reasons[0]);
+  // 30.2 against 30.4 both say 30.
+  const same = decide(options(30.2, 30.4, 0), decision, {});
+  assert.ok(same.reasons[0].startsWith('both options take about the same time'), same.reasons[0]);
+  const faster = decide(options(33, 30, 0), decision, {});
+  assert.equal(faster.reasons[0], 'transit is 3 minutes faster');
 });
 
 test('arrival clocks are 12-hour in the commute zone, at midnight, noon and across a DST change (CMB-32)', () => {

@@ -9,12 +9,16 @@ import {
   incidentsRequest,
   normaliseIncidents,
   assessTrajectory,
+  loadIncidents,
   fetchIncidents,
+  nearRoute,
   ICON_CATEGORY,
   CATEGORIES,
   FRESH_CLOSURE_MS,
+  DEFAULT_RADIUS_METRES,
   IncidentError,
 } from '../src/incidents.js';
+import { decodePolyline } from '../src/polyline.js';
 
 // Recorded live 2026-09-16 against the District box, key stripped.
 const live = JSON.parse(readFileSync('test/fixtures/tomtom-incidents-dc.json', 'utf8'));
@@ -24,6 +28,19 @@ const synthetic = JSON.parse(readFileSync('test/fixtures/tomtom-incidents-synthe
 // Not a real place. Any box works; the point is that it flows through.
 const bbox = { min_lon: -71.2, min_lat: 42.3, max_lon: -71.0, max_lat: 42.5 };
 const config = { incidents: bbox };
+
+// The synthetic Boston-area drive from the routes fixture (due north along
+// one meridian); never a real commute.
+const route = decodePolyline(
+  JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8')).driveThrough.polyline.encodedPolyline,
+);
+
+// A GeoJSON LineString (lon, lat order) `metresEast` of the route's vertices 2..4.
+function lineEastOf(metresEast) {
+  const coords = route.slice(2, 5).map(([lat, lon]) => [lon + metresEast / (111_320 * Math.cos((lat * Math.PI) / 180)), lat]);
+  return { type: 'LineString', coordinates: coords };
+}
+const accidentAt = (geometry) => ({ type: 'Feature', geometry, properties: { iconCategory: 1, magnitudeOfDelay: 3, from: 'A St', to: 'B St' } });
 
 test('the request takes its bounding box from config, lon,lat order, min then max', () => {
   const { url, params } = incidentsRequest(bbox);
@@ -108,9 +125,47 @@ test('no data is unknown: score null, not 0', () => {
     const result = assessTrajectory(input);
     assert.equal(result.score, null);
     assert.equal(result.count, null);
-    assert.equal(result.unstable, false);
+    assert.equal(result.unstable, null, 'unknown is not steady');
+    assert.equal(result.routeMatched, false);
     assert.match(result.reasons[0], /^live incidents unavailable/);
   }
+});
+
+test('geometry is kept as [lat, lon] points: LineString, Point, or null', () => {
+  const [line] = normaliseIncidents({ incidents: [accidentAt(lineEastOf(0))] });
+  assert.equal(line.points.length, 3);
+  assert.deepEqual(line.points[0], route[2]);
+  const [point] = normaliseIncidents({ incidents: [accidentAt({ type: 'Point', coordinates: [route[2][1], route[2][0]] })] });
+  assert.deepEqual(point.points, [route[2]]);
+  const [none] = normaliseIncidents({ incidents: [{ properties: { iconCategory: 1 } }] });
+  assert.equal(none.points, null);
+  for (const i of normaliseIncidents(live)) assert.ok(Array.isArray(i.points) && i.points.length > 0, 'every live record carries geometry');
+});
+
+test('with route geometry only an incident on the route triggers; the box still counts', () => {
+  const on = accidentAt(lineEastOf(30));
+  const off = accidentAt(lineEastOf(DEFAULT_RADIUS_METRES + 200));
+  const incidents = normaliseIncidents({ incidents: [on, off] });
+  assert.equal(nearRoute(route, incidents[0]), true);
+  assert.equal(nearRoute(route, incidents[1]), false);
+  assert.equal(nearRoute(route, incidents[1], 1000), true, 'the radius is a parameter');
+  assert.equal(nearRoute(route, { points: null }), false);
+
+  const matched = assessTrajectory(incidents, { points: route });
+  assert.equal(matched.unstable, true);
+  assert.equal(matched.count, 2);
+  assert.equal(matched.onRoute, 1);
+  assert.equal(matched.routeMatched, true);
+  assert.equal(matched.reasons.length, 1);
+
+  const boxWide = assessTrajectory(incidents);
+  assert.equal(boxWide.onRoute, 2, 'without geometry the whole box counts, as before');
+  assert.equal(boxWide.routeMatched, false);
+
+  const onlyOff = assessTrajectory([incidents[1]], { points: route });
+  assert.equal(onlyOff.unstable, false);
+  assert.equal(onlyOff.score, 0);
+  assert.equal(onlyOff.count, 1);
 });
 
 test('the live box, with its old closures and rush jams, is stable', () => {
@@ -176,12 +231,28 @@ test('fetchIncidents adds the key at call time and sends the configured box', as
   assert.equal(result.count, 2);
 });
 
+test('loadIncidents fetches without assessing, so the route can be matched afterwards; the deadline rides along', async () => {
+  const inits = [];
+  const signal = AbortSignal.timeout(10_000);
+  const stub = async (_url, init) => {
+    inits.push(init);
+    return { ok: true, status: 200, json: async () => ({ incidents: [accidentAt(lineEastOf(30))] }) };
+  };
+  const loaded = await loadIncidents(config, 'k', stub, { signal });
+  assert.equal(loaded.failure, undefined);
+  assert.equal(loaded.incidents.length, 1);
+  assert.equal(inits[0].signal, signal);
+  assert.deepEqual(assessTrajectory(loaded.incidents, { points: route }), await fetchIncidents(config, 'k', stub, { points: route }));
+  const noKey = await loadIncidents(config, null, stub);
+  assert.match(noKey.failure.reasons[0], /no TRAFFIC_API_KEY/);
+});
+
 test('an HTTP failure is unknown with a reason, and the key is not in it', async () => {
   const stub = async () => ({ ok: false, status: 500, json: async () => ({}) });
   const result = await fetchIncidents(config, 'sekrit', stub);
   assert.equal(result.score, null);
   assert.equal(result.count, null);
-  assert.equal(result.unstable, false);
+  assert.equal(result.unstable, null);
   assert.match(result.reasons[0], /live incidents unavailable: HTTP 500/);
   assert.equal(JSON.stringify(result).includes('sekrit'), false);
 });
@@ -208,6 +279,10 @@ test('a network error, bad JSON, or a missing key never throws and never leaks',
 
   const noBox = await fetchIncidents({}, 'k', neverCalled);
   assert.equal(noBox.score, null);
+
+  const broken = await fetchIncidents(config, 'k', () => { throw new RangeError('no'); });
+  assert.equal(broken.score, null);
+  assert.match(broken.reasons[0], /\(RangeError\)/);
 });
 
 test('an empty live response is a real clear through the full path', async () => {

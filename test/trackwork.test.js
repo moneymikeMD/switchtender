@@ -10,6 +10,7 @@ import {
   LINES,
   STALE_REASON,
   STALE_AFTER_MS,
+  OPEN_ENDED_MS,
   datesIn,
   linesIn,
   zonedMidnight,
@@ -166,6 +167,33 @@ test('a note row like "No track work scheduled" is skipped, not a failure', () =
 
 test('a table whose header lacks a line or date column is not the schedule', () => {
   assert.equal(parseTrackwork(table([['a', 'b', 'c']], ['Station', 'Elevator', 'Status']), { now: NOW }), null);
+});
+
+test('a start with no readable end is open-ended, spoken as "until further notice", and ages out', async () => {
+  for (const end of ['Until further notice', 'TBD', '']) {
+    const [w] = parseTrackwork(table([['Sept. 19', end, 'Red', 'x']]), { now: NOW });
+    assert.equal(w.startsAt, et('2026-09-19T00:00:00-04:00'), end);
+    assert.equal(w.openEnded, true, end);
+    assert.equal(w.endsAt, w.startsAt + OPEN_ENDED_MS, end);
+  }
+  const [dated] = parseTrackwork(table([['Sept. 19', 'Sept. 20', 'Red', 'x']]), { now: NOW });
+  assert.equal(dated.openEnded, false);
+
+  const html = table([['Sept. 19', 'Until further notice', 'Red', 'x']]);
+  const s = await fetchTrackwork(['Red'], stub({ body: html }).fetchImpl, { now: et('2026-10-15T08:00:00-04:00') });
+  assert.equal(s.active, 1, 'still active weeks later');
+  assert.deepEqual(s.reasons, ['planned track work on the Red Line until further notice']);
+  const before = assessTrackwork(parseTrackwork(html, { now: NOW }), ['Red'], { now: NOW });
+  assert.deepEqual(before.reasons, ['planned track work on the Red Line from Saturday until further notice']);
+  // Long after the open window would have aged out, the page is stale, not clear.
+  const [w] = parseTrackwork(html, { now: NOW });
+  assert.equal(sourceIsStale([w], w.endsAt + STALE_AFTER_MS + DAY), true);
+  assert.equal(sourceIsStale([w], w.endsAt + STALE_AFTER_MS - DAY), false);
+});
+
+test('a numeric entity outside Unicode is left as written, not thrown', () => {
+  const [w] = parseTrackwork(table([['Sept. 19', 'Sept. 20', 'Red', '&#1114112; work &#x110000; and &#8212; dash']]), { now: NOW });
+  assert.match(w.description, /&#1114112; work &#x110000; and — dash/);
 });
 
 test('a data row with no readable date or no recognisable line gives up on the table', () => {
@@ -349,7 +377,12 @@ test('fetchTrackwork logs each window whose year was inferred', async () => {
   assert.match(lines[0], /year inferred for Red window starting 2027-01-03/);
 });
 
-test('fetchTrackwork never throws even when the fetch implementation is broken', async () => {
+test('fetchTrackwork never throws even when the fetch implementation is broken, and carries the deadline', async () => {
   const s = await fetchTrackwork(['Red'], () => { throw new RangeError('no'); }, { now: NOW });
   assert.equal(s.unknown, true);
+  const { fetchImpl, calls } = stub();
+  const signal = AbortSignal.timeout(10_000);
+  await fetchTrackwork(['Red'], fetchImpl, { now: NOW, signal });
+  assert.equal(calls[0].init.signal, signal);
+  assert.match(calls[0].init.headers['User-Agent'], /^switchtender\//);
 });

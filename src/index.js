@@ -5,7 +5,8 @@
 // is printed because it is logged (CMB-11) and the rule's starting values are
 // tuned from that log. The same pipeline serves HTTP from src/server.js.
 
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS } from './routes.js';
@@ -16,12 +17,23 @@ const CONFIG_PATH = process.env.SWITCHTENDER_CONFIG ?? 'config.toml';
 const minutes = (seconds) => `${Math.round(seconds / 60)} min`;
 
 /**
- * `npm start -- --from origin` measures the whole trip from home (CMB-30).
- * Anything else is the verdict from the fork. Exported for the test.
+ * `npm start -- --from origin` (or `--from=origin`) measures the whole trip
+ * from home (CMB-30). Anything else is the verdict from the fork. An unknown
+ * argument is an error, not a silent default. Exported for the test.
  */
 export function parseArgs(argv) {
-  const i = argv.indexOf('--from');
-  const from = i === -1 ? 'fork' : argv[i + 1];
+  let from = 'fork';
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--from') {
+      from = argv[i + 1];
+      i += 1;
+    } else if (arg.startsWith('--from=')) {
+      from = arg.slice('--from='.length);
+    } else {
+      throw new ConfigError(`unknown argument ${JSON.stringify(arg)}; the only option is --from <${START_POINTS.join('|')}>`);
+    }
+  }
   if (!START_POINTS.includes(from)) {
     throw new ConfigError(`--from should be one of ${START_POINTS.join(', ')}, got ${JSON.stringify(from)}`);
   }
@@ -108,9 +120,10 @@ async function main() {
   }
 
   if (incidents) {
-    const state = incidents.score === null ? 'unknown' : incidents.unstable ? 'UNSTABLE' : 'steady';
+    const state = incidents.score === null ? `unknown (${incidents.reasons[0]})` : incidents.unstable ? 'UNSTABLE' : 'steady';
     const count = incidents.count === null ? '' : `, ${incidents.count} incidents in box`;
-    console.log(`  live incidents ${state}${count}`);
+    const matched = incidents.score === null ? '' : incidents.routeMatched ? ', matched to the route' : ', box-wide (no route geometry)';
+    console.log(`  live incidents ${state}${count}${matched}`);
   }
   console.log(
     closures.active === null
@@ -160,7 +173,16 @@ async function main() {
 }
 
 // Run only as the entry point; the test imports parseArgs without starting.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Resolved through realpath so a symlinked launcher still runs.
+function isEntryPoint() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

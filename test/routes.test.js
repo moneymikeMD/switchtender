@@ -176,6 +176,27 @@ test('an HTTP failure raises a RouteError that does not echo the request', async
   );
 });
 
+test('a rejected fetch, a deadline and a non-JSON body are RouteErrors too, naming the class and not the URL', async () => {
+  const config = {
+    route: {
+      decision_point: { lat: 1, lon: 2 },
+      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
+      destination: { lat: 5, lon: 6 },
+    },
+  };
+  const dropped = async () => { throw new TypeError('fetch failed: https://routes.googleapis.com/?key=k'); };
+  await assert.rejects(
+    () => computeOptions(config, 'k', dropped),
+    (e) => e instanceof RouteError && e.message === 'routes: request failed (TypeError)',
+  );
+  const html = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('<'); } });
+  await assert.rejects(() => computeOptions(config, 'k', html), (e) => e instanceof RouteError && /not JSON/.test(e.message));
+  let signal;
+  const seen = async (_url, init) => { signal = init.signal; return { ok: false, status: 500, json: async () => ({}) }; };
+  await assert.rejects(() => computeOptions(config, 'k', seen), RouteError);
+  assert.ok(signal instanceof AbortSignal, 'every Routes call carries a deadline');
+});
+
 test('an empty route list is an error, not an undefined duration', async () => {
   const stub = async () => ({ ok: true, json: async () => ({ routes: [] }) });
   const config = {

@@ -8,16 +8,22 @@
 //
 // Two invariants:
 //   - Logging never blocks the verdict. Every exported entry point that talks
-//     to the network swallows its failure and reports it as { ok: false }.
-//   - The column order is defined once, in HEADER, and never reshuffled. A
-//     row is an array aligned to HEADER, so adding a column means appending
-//     to HEADER and to buildRow, and the BigQuery schema in
-//     scripts/bq-external-table.sh is generated from HEADER.
+//     to the network swallows its failure and reports it as { ok: false },
+//     and the caller hands in a deadline (an AbortSignal) so a stalled Sheets
+//     call is bounded too.
+//   - The column order is defined once, here, and never reshuffled. A row is
+//     an array aligned to FULL_HEADER (HEADER then EXTRA_COLUMNS), so adding a
+//     column means appending to EXTRA_COLUMNS and to the engine's extras, and
+//     the BigQuery schema in scripts/bq-external-table.sh is generated from
+//     FULL_HEADER. An extras key that is not listed is an error, never a
+//     silently shifted column.
 //
 // Signals that do not exist yet (weather) have their columns present and
-// empty so the schema does not move when they arrive. Signals still being
-// built (CHART, DDOT closures) arrive through `extras`, a flat object whose
-// keys become columns after HEADER in insertion order.
+// empty so the schema does not move when they arrive. Signals added after
+// HEADER froze arrive through `extras` and land in EXTRA_COLUMNS order. The
+// sheet's header row is extended in place when it is a prefix of
+// FULL_HEADER (the live tab was written when there were six extras), and a
+// header that is anything else stops the append rather than misalign it.
 //
 // Authentication: no key files on disk. The logger takes an access token
 // provider; see tokenFromEnvOrMetadata for the two supported sources.
@@ -80,6 +86,37 @@ export const HEADER = Object.freeze([
   'engine_version',
 ]);
 
+/**
+ * Columns after the frozen HEADER, in the order they were first written to
+ * the live sheet. Append only; never reorder. A new engine extra must be
+ * added here first, or buildRow refuses it.
+ */
+export const EXTRA_COLUMNS = Object.freeze([
+  'closures_active',
+  'closures_source_live',
+  'closures_addresses',
+  'maryland_on_route',
+  'maryland_total',
+  'maryland_descriptions',
+  'closures_total',
+  'events_count',
+  'events_evening',
+  'events_reasons',
+  'trackwork_active',
+  'trackwork_upcoming',
+  'trackwork_stale_windows',
+  'measured_from',
+  'drive_walk_seconds',
+  'drive_arrival',
+  'transit_arrival',
+  // Added 2026-09-17: the park-and-ride walk (so its components sum again)
+  // and whether the incident signal was matched to the route.
+  'transit_walk_seconds',
+  'incidents_route_matched',
+]);
+
+export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);
+
 export const ENGINE_VERSION = 'switchtender/1.0.0';
 
 // Meteorological seasons, northern hemisphere. The log is for a commute in
@@ -128,21 +165,27 @@ export function cell(value) {
 
 const joinList = (list, sep) => (Array.isArray(list) && list.length > 0 ? list.join(sep) : null);
 
-/** Header for a row built with these extras: HEADER then the extra keys not already present. */
+/**
+ * The header for any row: FULL_HEADER. Throws when `extras` names a column
+ * that is not in it, because the alternative is a value under the wrong label.
+ */
 export function headerFor(extras = {}) {
-  const extraKeys = Object.keys(extras ?? {}).filter((k) => !HEADER.includes(k));
-  return [...HEADER, ...extraKeys];
+  const unknownKeys = Object.keys(extras ?? {}).filter((k) => !FULL_HEADER.includes(k));
+  if (unknownKeys.length > 0) {
+    throw new Error(`log: extras not in EXTRA_COLUMNS: ${unknownKeys.join(', ')}`);
+  }
+  return [...FULL_HEADER];
 }
 
 /**
- * Build one row aligned to headerFor(extras).
+ * Build one row aligned to FULL_HEADER.
  *
  * @param now       Date of the verdict.
  * @param config    the loaded config (route.timezone, decision, secrets.degraded).
  * @param options   routes.computeOptions result.
  * @param incidents incidents.fetchIncidents result, or null when not attempted.
  * @param verdict   verdict.decide result.
- * @param extras    flat { column: primitive } for signals not yet in HEADER.
+ * @param extras    flat { column: primitive } for the EXTRA_COLUMNS; a missing one is empty.
  */
 export function buildRow({ now = new Date(), config, options, incidents = null, verdict, extras = {} }) {
   const t = localTime(now, config?.route?.timezone ?? 'UTC');
@@ -179,7 +222,8 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
 
     incidents_count: incidents?.count ?? null,
     incidents_score: incidents?.score ?? null,
-    incidents_unstable: incidents ? Boolean(incidents.unstable) : null,
+    // Unknown (score null) is an empty cell, never 'false' (rule 4).
+    incidents_unstable: incidents && incidents.score !== null ? Boolean(incidents.unstable) : null,
     incidents_by_category:
       incidents?.byCategory && Object.keys(incidents.byCategory).length > 0 ? incidents.byCategory : null,
     incidents_reasons: joinList(incidents?.reasons, ' | '),
@@ -197,7 +241,7 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
     required_margin_minutes: verdict?.requiredMarginMinutes ?? null,
     verdict_congestion_score: verdict?.congestionScore ?? null,
     verdict_incidents_score: verdict?.incidentsScore ?? null,
-    road_unstable: verdict ? Boolean(verdict.roadUnstable) : null,
+    road_unstable: verdict?.roadUnstable ?? null,
     confidence: verdict?.confidence ?? null,
     reasons: joinList(verdict?.reasons, ' | '),
 
@@ -207,24 +251,30 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
   };
 
   const header = headerFor(extras);
-  return header.map((name) => cell(name in named ? named[name] : extras[name]));
+  return header.map((name) => cell(name in named ? named[name] : extras?.[name]));
 }
 
 // ---------------------------------------------------------------------------
 // Sheets API
 
-const rangeOf = (tab, a1) => encodeURIComponent(`'${tab.replace(/'/g, "''")}'!${a1}`);
+// A1 notation quotes the tab name and doubles any apostrophe inside it.
+const a1Range = (tab, a1) => `'${tab.replace(/'/g, "''")}'!${a1}`;
+const rangeOf = (tab, a1) => encodeURIComponent(a1Range(tab, a1));
 
-async function sheetsCall(fetchImpl, token, method, url, body) {
+async function sheetsCall(fetchImpl, token, method, url, body, signal) {
   let response;
   try {
     response = await fetchImpl(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
   } catch (cause) {
-    return { ok: false, status: 0, error: `network: ${cause.message}` };
+    // Name and message: an abort says "TimeoutError", a dropped socket says
+    // ECONNRESET. The Sheets URL carries the sheet id, which is an address,
+    // not a secret, and is not repeated here anyway.
+    return { ok: false, status: 0, error: `network (${cause?.name ?? 'Error'}): ${cause?.message ?? cause}` };
   }
   let json = null;
   try {
@@ -240,39 +290,68 @@ async function sheetsCall(fetchImpl, token, method, url, body) {
 }
 
 /** Append one row. valueInputOption RAW: cells are stored exactly as sent. */
-export async function appendRow(row, { sheetId, tab, token, fetchImpl = fetch }) {
+export async function appendRow(row, { sheetId, tab, token, fetchImpl = fetch, signal }) {
   const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, 'A1')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-  const result = await sheetsCall(fetchImpl, token, 'POST', url, { values: [row] });
+  const result = await sheetsCall(fetchImpl, token, 'POST', url, { values: [row] }, signal);
   return { ok: result.ok, status: result.status, error: result.error ?? null };
 }
 
+const isPrefix = (shorter, longer) =>
+  shorter.length <= longer.length && shorter.every((v, i) => v === longer[i]);
+
 /**
- * Make sure the tab exists and row 1 holds the header. Idempotent: a tab that
- * already has anything in A1 is left alone, so an existing log is never
- * overwritten and a v1 tab with its own header is never clobbered.
+ * Make sure the tab exists and row 1 holds the header.
+ *
+ * Idempotent. An empty row 1 gets the header (created: true). A row 1 equal
+ * to the header is left alone. A row 1 that is a prefix of the header (a tab
+ * first written before the newer columns existed) is extended in place
+ * (extended: true); only blank cells are written. Anything else is refused
+ * (ok: false), because appending under the wrong labels is worse than not
+ * appending: a v1 tab with its own header is never clobbered or misused.
  */
-export async function ensureHeader({ sheetId, tab, token, fetchImpl = fetch, header = HEADER }) {
-  const readUrl = `${SHEETS}/${sheetId}/values/${rangeOf(tab, 'A1')}`;
-  let read = await sheetsCall(fetchImpl, token, 'GET', readUrl);
+export async function ensureHeader({ sheetId, tab, token, fetchImpl = fetch, header = FULL_HEADER, signal }) {
+  const readUrl = `${SHEETS}/${sheetId}/values/${rangeOf(tab, '1:1')}`;
+  let read = await sheetsCall(fetchImpl, token, 'GET', readUrl, undefined, signal);
   if (!read.ok && read.status === 400) {
     // "Unable to parse range": the tab does not exist yet. Create it.
     const added = await sheetsCall(fetchImpl, token, 'POST', `${SHEETS}/${sheetId}:batchUpdate`, {
       requests: [{ addSheet: { properties: { title: tab } } }],
-    });
-    if (!added.ok) return { ok: false, status: added.status, error: added.error, created: false };
+    }, signal);
+    if (!added.ok) return { ok: false, status: added.status, error: added.error, created: false, extended: false };
     read = { ok: true, status: 200, body: {} };
   }
-  if (!read.ok) return { ok: false, status: read.status, error: read.error, created: false };
-  const a1 = read.body?.values?.[0]?.[0];
-  if (a1 !== undefined && a1 !== '') return { ok: true, status: 200, error: null, created: false };
+  if (!read.ok) return { ok: false, status: read.status, error: read.error, created: false, extended: false };
+
+  const wanted = Array.from(header);
+  const existing = (read.body?.values?.[0] ?? []).map((v) => String(v ?? ''));
+  while (existing.length > 0 && existing[existing.length - 1] === '') existing.pop();
+  const empty = existing.length === 0;
+  if (!empty && existing.length === wanted.length && isPrefix(existing, wanted)) {
+    return { ok: true, status: 200, error: null, created: false, extended: false };
+  }
+  if (!empty && !isPrefix(existing, wanted)) {
+    return {
+      ok: false,
+      status: 200,
+      error: `sheet header does not match the engine's columns (${existing.length} vs ${wanted.length}); refusing to append`,
+      created: false,
+      extended: false,
+    };
+  }
 
   const writeUrl = `${SHEETS}/${sheetId}/values/${rangeOf(tab, 'A1')}?valueInputOption=RAW`;
   const wrote = await sheetsCall(fetchImpl, token, 'PUT', writeUrl, {
-    range: `'${tab}'!A1`,
+    range: a1Range(tab, 'A1'),
     majorDimension: 'ROWS',
-    values: [Array.from(header)],
-  });
-  return { ok: wrote.ok, status: wrote.status, error: wrote.error ?? null, created: wrote.ok };
+    values: [wanted],
+  }, signal);
+  return {
+    ok: wrote.ok,
+    status: wrote.status,
+    error: wrote.error ?? null,
+    created: wrote.ok && empty,
+    extended: wrote.ok && !empty,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -286,12 +365,13 @@ export async function ensureHeader({ sheetId, tab, token, fetchImpl = fetch, hea
  * service identity's token, no key file anywhere. The value is read at call
  * time and never printed (CLAUDE.md rule 7).
  */
-export async function tokenFromEnvOrMetadata({ env = process.env, fetchImpl = fetch } = {}) {
+export async function tokenFromEnvOrMetadata({ env = process.env, fetchImpl = fetch, signal } = {}) {
   if (env.SHEETS_ACCESS_TOKEN) return env.SHEETS_ACCESS_TOKEN;
   try {
+    const own = AbortSignal.timeout(METADATA_TIMEOUT_MS);
     const response = await fetchImpl(METADATA_TOKEN_URL, {
       headers: { 'Metadata-Flavor': 'Google' },
-      signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
+      signal: signal ? AbortSignal.any([signal, own]) : own,
     });
     if (!response.ok) return null;
     const json = await response.json();
@@ -307,7 +387,10 @@ export async function tokenFromEnvOrMetadata({ env = process.env, fetchImpl = fe
 /**
  * Log one verdict. Never throws. Returns { ok, error }.
  *
- * @param tokenProvider async () => token string or null.
+ * @param tokenProvider async ({ fetchImpl, signal }) => token string or null.
+ *                      It receives the injected fetch so a test never reaches
+ *                      the real metadata server.
+ * @param signal        AbortSignal bounding every network call in here.
  */
 export async function logVerdict({
   now = new Date(),
@@ -318,17 +401,18 @@ export async function logVerdict({
   extras = {},
   tokenProvider = tokenFromEnvOrMetadata,
   fetchImpl = fetch,
+  signal,
 }) {
   try {
     const sheetId = config?.log?.sheet_id;
     const tab = config?.log?.sheet_tab ?? 'verdicts';
     if (!sheetId) return { ok: false, error: 'no sheet id configured' };
 
-    const token = await tokenProvider();
+    const token = await tokenProvider({ fetchImpl, signal });
     if (!token) return { ok: false, error: 'no credentials' };
 
     const row = buildRow({ now, config, options, incidents, verdict, extras });
-    const target = { sheetId, tab, token, fetchImpl };
+    const target = { sheetId, tab, token, fetchImpl, signal };
 
     const header = await ensureHeader({ ...target, header: headerFor(extras) });
     if (!header.ok) return { ok: false, error: header.error ?? `header check failed (${header.status})` };

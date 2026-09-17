@@ -32,11 +32,21 @@
 // shape is a degraded result, never a thrown error (CLAUDE.md rule 4: unknown
 // is null, not 0; rule 3: this moves confidence, never the verdict).
 //
+// Freshness is two tests (rule 5). The source: its newest record (by
+// lastCachedDataUpdateTime, else startDateTime) must fall in the current
+// month, or the whole signal is stale; an empty feed has nothing to date and
+// is a real clear, as in trackwork.js. The record: its window must cover now,
+// so a closure whose closureEndDate has passed, or whose start is still ahead,
+// is not on the road this morning. Records with no dates at all are kept: the
+// feed lists them as active and nothing here can disprove it. Nothing is
+// filtered by createTime.
+//
 // Matching is geometric, against the decoded route polyline, never by road
 // name: CHART's descriptions are free text and the route's road names are not
 // exposed in a comparable form.
 
-import { haversineMetres } from './polyline.js';
+import { getJson } from './http.js';
+import { nearPolyline } from './polyline.js';
 
 export const CHART_EVENTS_URL =
   'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getEventMapDataJSON.do';
@@ -59,14 +69,26 @@ const MAX_DESCRIPTIONS = 5;
 
 const UNKNOWN_REASON = 'maryland incidents unavailable';
 
-function unknown(reason) {
+export const STALE_REASON = 'maryland records source stale';
+
+/** The unknown shape: every count null, the reason naming the failure class. */
+export function unknownChart(reason) {
   return {
     onRoute: null,
     total: null,
     descriptions: [],
     reasons: [`${UNKNOWN_REASON}: ${reason}`],
     score: null,
+    sourceLive: null,
   };
+}
+
+const unknown = unknownChart;
+
+// Stale is distinct from unavailable, as in closures.js: the feed answered,
+// and its newest record disqualifies it (rule 5).
+function stale() {
+  return { ...unknown(''), reasons: [STALE_REASON], sourceLive: false };
 }
 
 const str = (v) => (typeof v === 'string' && v.length > 0 ? v : null);
@@ -90,6 +112,9 @@ function normaliseOne(raw, kind) {
     lanes: str(raw?.lanesStatus),
     description: str(raw?.description) ?? str(raw?.name) ?? kind,
     startedAt: epochMs(raw?.startDateTime),
+    // Closures carry an end date (-1 when unset); events have none.
+    endsAt: epochMs(raw?.closureEndDate),
+    updatedAt: epochMs(raw?.lastCachedDataUpdateTime),
   };
 }
 
@@ -108,19 +133,46 @@ export function normaliseChart(vendorJson, kind = 'incident') {
 }
 
 /**
- * True when the incident lies within radiusMetres of any polyline point.
- *
- * Point-to-vertex distance, not point-to-segment: the polyline is dense
- * enough at HIGH_QUALITY that the radius absorbs the gap, and it keeps this
- * a dozen lines. An incident with no coordinates is never on the route.
+ * True when the incident lies within radiusMetres of the route polyline
+ * (segments included; see polyline.nearPolyline). An incident with no
+ * coordinates is never on the route.
  */
 export function nearRoute(points, incident, radiusMetres = DEFAULT_RADIUS_METRES) {
-  if (!Array.isArray(points) || incident?.lat == null || incident?.lon == null) return false;
-  const here = [incident.lat, incident.lon];
-  for (const point of points) {
-    if (haversineMetres(point, here) <= radiusMetres) return true;
+  if (incident?.lat == null || incident?.lon == null) return false;
+  return nearPolyline(points, [incident.lat, incident.lon], radiusMetres);
+}
+
+/**
+ * Source freshness (rule 5, first test): the newest record falls in the
+ * current month, compared in UTC as closures.js does. No records means
+ * nothing to date, which is a clear, not a stale source. Records without any
+ * date cannot vouch for the feed, so a non-empty feed with no dates is null:
+ * could not tell.
+ */
+export function sourceIsLive(records, now = Date.now()) {
+  if (!Array.isArray(records)) return null;
+  if (records.length === 0) return true;
+  let newest = null;
+  for (const r of records) {
+    const at = r.updatedAt ?? r.startedAt;
+    if (at != null && (newest === null || at > newest)) newest = at;
   }
-  return false;
+  if (newest === null) return null;
+  const a = new Date(newest);
+  const b = new Date(now);
+  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
+}
+
+/**
+ * Record freshness (rule 5, second test): the record's window covers now. A
+ * start in the future or an end in the past rules it out; a missing bound is
+ * open, since the feed lists the record as active.
+ */
+export function relevant(record, now = Date.now()) {
+  if (!record) return false;
+  if (record.startedAt != null && record.startedAt > now) return false;
+  if (record.endsAt != null && record.endsAt < now) return false;
+  return true;
 }
 
 // "Active Closure @ US 50 WEST BETWEEN SECOND ST AND MULBERRY DR (MM 66.0-64.0)"
@@ -149,11 +201,15 @@ function describe(incident) {
  *               a CHART record on the route predicts a slower drive. Until it
  *               does, a number here would be a guess dressed as a measurement.
  */
-export function assessChart(incidents, points, { radiusMetres = DEFAULT_RADIUS_METRES } = {}) {
+export function assessChart(
+  incidents,
+  points,
+  { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, sourceLive = null } = {},
+) {
   if (!Array.isArray(incidents)) return unknown('no data');
   if (!Array.isArray(points) || points.length === 0) return unknown('no route polyline');
 
-  const hits = incidents.filter((i) => nearRoute(points, i, radiusMetres));
+  const hits = incidents.filter((i) => relevant(i, now) && nearRoute(points, i, radiusMetres));
   const descriptions = hits.slice(0, MAX_DESCRIPTIONS).map(describe);
   const reasons = [];
   if (hits.length > 0) {
@@ -166,47 +222,60 @@ export function assessChart(incidents, points, { radiusMetres = DEFAULT_RADIUS_M
     descriptions,
     reasons,
     score: null,
+    sourceLive,
   };
 }
 
-async function fetchOne(url, kind, fetchImpl) {
-  let response;
-  try {
-    response = await fetchImpl(url, { method: 'GET', headers: { Accept: 'application/json' } });
-  } catch (cause) {
-    return { error: `${kind}s network error (${cause?.name ?? 'Error'})` };
-  }
-  if (!response?.ok) return { error: `${kind}s HTTP ${response?.status ?? 'unknown'}` };
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    return { error: `${kind}s unparseable response` };
-  }
+async function fetchOne(url, kind, fetchImpl, signal) {
+  const { data, error } = await getJson(url, { fetchImpl, signal });
+  if (error) return { error: `${kind}s ${error}` };
+  // The envelope carries its own verdict on itself; success false with HTTP
+  // 200 has not been seen but costs nothing to honour.
+  if (data?.success === false) return { error: `${kind}s reported ${str(data?.error) ?? 'an error'}` };
   const normalised = normaliseChart(data, kind);
   if (normalised === null) return { error: `${kind}s response had no data list` };
   return { records: normalised };
 }
 
 /**
- * Fetch CHART events and closures in parallel and assess them against the
- * decoded route polyline ([[lat, lon], ...], from decodePolyline).
+ * Fetch CHART events and closures in parallel and apply the source freshness
+ * test, without assessing them, so the requests can go out before routing
+ * has answered and assessChart can wait for the route polyline.
  *
- * Never throws. If either feed fails the whole signal is unknown: a count
- * from half the feeds would read as a real count and understate the road.
+ * Returns { records } or { failure }. If either feed fails the whole signal
+ * is unknown: a count from half the feeds would read as a real count and
+ * understate the road. Never throws.
  */
-export async function fetchChart(points, fetchImpl = fetch, options = {}) {
-  if (!Array.isArray(points) || points.length === 0) return unknown('no route polyline');
-  let results;
+export async function loadChart(fetchImpl = fetch, { now = Date.now(), signal } = {}) {
   try {
-    results = await Promise.all([
-      fetchOne(CHART_EVENTS_URL, 'incident', fetchImpl),
-      fetchOne(CHART_CLOSURES_URL, 'closure', fetchImpl),
+    const results = await Promise.all([
+      fetchOne(CHART_EVENTS_URL, 'incident', fetchImpl, signal),
+      fetchOne(CHART_CLOSURES_URL, 'closure', fetchImpl, signal),
     ]);
+    const failed = results.find((r) => r.error);
+    if (failed) return { failure: unknown(failed.error) };
+    const records = results.flatMap((r) => r.records);
+    const live = sourceIsLive(records, now);
+    if (live === null) return { failure: unknown('no record carries a date') };
+    if (!live) return { failure: stale() };
+    return { records };
   } catch (cause) {
-    return unknown(`unexpected error (${cause?.name ?? 'Error'})`);
+    return { failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) };
   }
-  const failed = results.find((r) => r.error);
-  if (failed) return unknown(failed.error);
-  return assessChart(results.flatMap((r) => r.records), points, options);
+}
+
+/**
+ * Fetch both CHART feeds and assess them against the decoded route polyline
+ * ([[lat, lon], ...], from decodePolyline): loadChart then assessChart.
+ * Never throws.
+ */
+export async function fetchChart(
+  points,
+  fetchImpl = fetch,
+  { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, signal } = {},
+) {
+  if (!Array.isArray(points) || points.length === 0) return unknown('no route polyline');
+  const loaded = await loadChart(fetchImpl, { now, signal });
+  if (loaded.failure) return loaded.failure;
+  return assessChart(loaded.records, points, { now, radiusMetres, sourceLive: true });
 }

@@ -641,7 +641,49 @@ test('a 500 from the schedule host is unknown for that venue only, and unknown o
   // The other way round: the ticketing host fails, the ballpark carries the signal.
   const tmDown = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503 }), { now: noon16 });
   assert.equal(tmDown.unknown, false);
+  assert.equal(tmDown.partial, true);
   assert.deepEqual(tmDown.reasons, ['Nationals Park game at 6:45 this evening']);
   assert.deepEqual(tmDown.unresolved, ['Audi Field', 'The Anthem', 'Arena Stage']);
   assert.match(tmDown.notes[0], /^ticketing source failed: venue lookup HTTP 503/);
+});
+
+test('a zero from the sources that answered says nothing about the one that failed: unknown, not clear (rule 4)', async () => {
+  // Ticketing down on an arena night, ballpark off day: the arena's events
+  // are unknown, and the merged answer must not read as "no events".
+  const offDay = { totalItems: 0, totalGames: 0, dates: [] };
+  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503, schedule: offDay }), { now: noon16 });
+  assert.equal(result.unknown, true);
+  assert.equal(result.partial, true);
+  assert.equal(result.count, null);
+  assert.equal(result.evening, null);
+  assert.deepEqual(result.reasons, ['scheduled events unavailable: venue lookup HTTP 503']);
+  assert.deepEqual(result.resolved, ['Nationals Park'], 'what did answer is still recorded');
+  assert.match(result.notes[0], /^ticketing source failed/);
+
+  // The same with no key: the skip is a failure for the ticketed venues.
+  const noKey = await fetchEvents(mixedConfig, undefined, twoSourceFetch({ schedule: offDay }), { now: noon16 });
+  assert.equal(noKey.unknown, true);
+  assert.deepEqual(noKey.reasons, ['scheduled events unavailable: no EVENTS_API_KEY']);
+  assert.deepEqual(noKey.notes, ['ticketing source skipped: no EVENTS_API_KEY']);
+
+  // A ballpark failure on an evening the arena has something is still that event.
+  const game = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  assert.equal(game.unknown, false);
+  assert.equal(game.partial, true);
+  // And a ballpark-only failure names itself once.
+  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500, schedule: offDay }), { now: noon16 });
+  assert.deepEqual(alone.reasons, ['ballpark schedule unavailable: HTTP 500']);
+  // A full answer from every source is not partial.
+  assert.equal((await fetchEvents(mixedConfig, 'k', twoSourceFetch(), { now: noon16 })).partial, false);
+});
+
+test('the deadline rides along on every request, and a fetch that throws synchronously is unknown', async () => {
+  const inits = [];
+  const signal = AbortSignal.timeout(10_000);
+  const inner = twoSourceFetch();
+  await fetchEvents(mixedConfig, 'k', async (url, init) => { inits.push(init); return inner(url, init); }, { now: noon16, signal });
+  assert.equal(inits.length, 5);
+  assert.ok(inits.every((i) => i.signal === signal));
+  const broken = await fetchEvents(mixedConfig, 'k', () => { throw new RangeError('no'); }, { now: noon16 });
+  assert.equal(broken.unknown, true);
 });

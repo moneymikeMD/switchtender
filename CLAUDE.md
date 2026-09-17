@@ -74,10 +74,10 @@ file ownership, reviews the diff, merges, runs `npm test` and a live
 | --- | --- | --- |
 | Drive and transit durations, congestion | Google Routes API | `ROUTES_API_KEY` |
 | Maryland live incidents | CHART `getEventMapDataJSON.do` | none |
-| DC live incidents | TomTom Traffic Incident Details v5 | `TRAFFIC_API_KEY` |
-| DC planned road closures | DDOT TOPS ArcGIS layer 11 (only layer with IsRoadClosed), matched to the route | none |
+| DC live incidents | TomTom Traffic Incident Details v5, matched to the route by geometry | `TRAFFIC_API_KEY` |
+| DC planned road closures | DDOT TOPS ArcGIS layer 11 (only layer with IsRoadClosed), box applied client side (the server envelope cost 6 s), matched to the route | none |
 | Venue events | Ticketmaster Discovery per configured venue; `provider = "mlb"` venues read MLB's keyless schedule instead | `EVENTS_API_KEY` |
-| Rail alerts | WMATA Incidents | `TRANSIT_API_KEY` |
+| Rail alerts | WMATA Incidents (not built yet; the key is provisioned but unread and unscored) | `TRANSIT_API_KEY` |
 | Planned track work | Scrape of wmata.com/ride/planned-track-work.html, lines from `[transit]` | none |
 
 Rejected, with the evidence in the tickets: MapQuest (CMB-22), HERE, Bing,
