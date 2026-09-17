@@ -25,7 +25,9 @@ ROUTES_API_KEY=... npm start
   not in this repo.
 - **Memory:** the global memory-graph. Recall with single nouns, one per call:
   `switchtender`, `commuter`, `cmb`, `tomtom`, `wmata`, `chart`, `ddot`.
-- **Resume notes:** `docs/handoffs/`, newest first.
+- **Resume notes:** `docs/handoffs/`, newest first. Read only the newest.
+- **Service:** Cloud Run `switchtender` in `commuter-bot-501717`, us-east4; `docs/deploy.md`.
+- **Phone:** MacroDroid macro `docs/switchtender.macro`; `docs/phone.md`.
 - **v1:** a separate private repository. It stays private forever because its
   history holds the owner's home coordinates. Nothing here depends on it.
 
@@ -73,10 +75,10 @@ file ownership, reviews the diff, merges, runs `npm test` and a live
 | Drive and transit durations, congestion | Google Routes API | `ROUTES_API_KEY` |
 | Maryland live incidents | CHART `getEventMapDataJSON.do` | none |
 | DC live incidents | TomTom Traffic Incident Details v5 | `TRAFFIC_API_KEY` |
-| DC planned road closures | DDOT TOPS ArcGIS layers 10 and 11 | none |
-| Venue events | Ticketmaster Discovery, filtered by a venue allowlist | `EVENTS_API_KEY` |
+| DC planned road closures | DDOT TOPS ArcGIS layer 11 (only layer with IsRoadClosed), matched to the route | none |
+| Venue events | Ticketmaster Discovery per configured venue; `provider = "mlb"` venues read MLB's keyless schedule instead | `EVENTS_API_KEY` |
 | Rail alerts | WMATA Incidents | `TRANSIT_API_KEY` |
-| Planned track work | Scrape of the wmata.com track-work table | none |
+| Planned track work | Scrape of wmata.com/ride/planned-track-work.html, lines from `[transit]` | none |
 
 Rejected, with the evidence in the tickets: MapQuest (CMB-22), HERE, Bing,
 DDOT MajorEvent (no data after 2017), HSEMA road closures (no data after 2023),
