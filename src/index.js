@@ -70,7 +70,7 @@ async function main() {
     throw error;
   }
 
-  const { options, incidents, closures, maryland, verdict, spoken, logged } = result;
+  const { options, incidents, closures, maryland, events, trackwork, verdict, spoken, logged } = result;
   const { driveThrough, parkAndRide } = options;
   console.log(`\nFrom ${route.decision_point.label}:`);
   console.log(
@@ -88,13 +88,27 @@ async function main() {
   console.log(
     closures.active === null
       ? `  planned closures unknown (${closures.reasons[0]})`
-      : `  planned closures ${closures.active} active in box`,
+      : `  planned closures ${closures.active} on route of ${closures.total} in box`,
   );
   console.log(
     maryland.onRoute === null
       ? `  maryland records unknown (${maryland.reasons[0]})`
       : `  maryland records ${maryland.onRoute} on route of ${maryland.total}`,
   );
+  if (events) {
+    console.log(
+      events.unknown
+        ? `  venue events unknown (${events.reasons[0]})`
+        : `  venue events ${events.evening} this evening of ${events.count} today`,
+    );
+  }
+  if (trackwork) {
+    console.log(
+      trackwork.unknown
+        ? `  track work unknown (${trackwork.reasons[0]})`
+        : `  track work ${trackwork.active} active, ${trackwork.upcoming} upcoming on ${config.transit.lines.join('/')}`,
+    );
+  }
 
   console.log('\nVerdict:');
   for (const [key, value] of Object.entries(verdict)) {
