@@ -1,2 +1,0 @@
-date	wave	turns	cost_usd	model_mix	notes
-2026-09-17T00:16:19Z	2026-09-16-eve	220	12.1311	claude-fable-5-1:93,claude-sonnet-5:7	First wave. CMB-9 half-verified, CMB-10/11/16/22/23 completed, Node 24 upgrade, 117 tests; five subagents in worktrees (CMB-10,22,16,23,11) plus one sonnet wave-trail reviewer. No previous wave to compare.
