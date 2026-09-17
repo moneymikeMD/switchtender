@@ -285,3 +285,17 @@ test('unknown events or schedule cost a little, are spoken, and leave counts nul
   assert.ok(v.reasons.some((r) => r.startsWith('scheduled events unavailable')));
   assert.ok(v.reasons.some((r) => r.startsWith('track work schedule unavailable')));
 });
+
+test('speak says at most three reason clauses and keeps the rest for the log', () => {
+  const v = decide(options(30, 60, 0), decision, {
+    incidents: unstableBox,
+    closures: someClosures,
+    maryland: busyMaryland,
+    events: gameTonight,
+  });
+  assert.ok(v.reasons.length > 3);
+  const line = speak(v);
+  assert.ok(line.toLowerCase().includes(v.reasons[0].toLowerCase()));
+  assert.ok(line.includes(v.reasons[2]));
+  assert.ok(!line.includes(v.reasons[3]));
+});

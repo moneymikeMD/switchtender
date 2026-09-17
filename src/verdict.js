@@ -38,6 +38,10 @@ export const CLOSE_CALL_MINUTES = 2; // |margin - required| below this is close
 export const CONFIDENCE_FLOOR = 0.1; // never zero: a verdict was still given
 
 // Spoken bands. A decimal is meaningless at 60 mph; a word is not.
+// How many reason clauses the spoken line carries. Heard once at 60 mph, a
+// fourth clause is noise; the log keeps them all.
+export const MAX_SPOKEN_REASONS = 3;
+
 export const CONFIDENCE_BANDS = [
   [0.75, 'high'],
   [0.5, 'moderate'],
@@ -265,7 +269,12 @@ export function speak(verdict) {
     verdict.choice === 'drive'
       ? `Driving is ${verdict.driveMinutes} minutes, the train is ${verdict.transitMinutes} minutes.`
       : `The train is ${verdict.transitMinutes} minutes, driving is ${verdict.driveMinutes} minutes.`;
-  const reason = verdict.reasons.length > 0 ? `${capitalise(verdict.reasons.join(', '))}.` : '';
+  // At most MAX_SPOKEN_REASONS clauses are said aloud (owner decision
+  // 2026-09-16); the full list stays on the verdict object for the log. The
+  // first clause is always the time margin, so the cap trims signals, never
+  // the core of the decision.
+  const spokenReasons = verdict.reasons.slice(0, MAX_SPOKEN_REASONS);
+  const reason = spokenReasons.length > 0 ? `${capitalise(spokenReasons.join(', '))}.` : '';
   const confidence = `Confidence is ${confidenceBand(verdict.confidence)}.`;
   return [said, times, reason, confidence, said].filter(Boolean).join(' ');
 }
