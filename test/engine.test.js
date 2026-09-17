@@ -50,6 +50,8 @@ test('the engine returns the same verdict decide() gives for the same inputs', a
     incidents: null,
     closures: result.closures,
     maryland: result.maryland,
+    events: result.events,
+    trackwork: result.trackwork,
   });
 
   assert.deepEqual(result.verdict, expected);

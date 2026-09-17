@@ -44,13 +44,14 @@ export async function runVerdict(config, { fetchImpl = fetch, now = new Date(), 
   const incidentsPromise = trafficKey
     ? fetchIncidents(config, trafficKey, fetchImpl)
     : Promise.resolve(null);
-  // Scheduled events (CMB-13) need only config and a key; planned track work
-  // (CMB-26) needs only the configured lines. Both start with routing. A
-  // missing key or an empty line list means the signal is not attempted and
+  // Scheduled events (CMB-13, CMB-25) run whenever venues are configured:
+  // fetchEvents routes each venue to its provider and copes with a missing
+  // Ticketmaster key itself, because mlb venues need no key at all. Planned
+  // track work (CMB-26) needs only the configured lines. Both start with
+  // routing. No venues or no lines means the signal is not attempted and
   // stays null, which decide() reads as "not consulted", not "clear".
-  const eventsKey = secrets.keys.EVENTS_API_KEY;
-  const eventsPromise = eventsKey
-    ? fetchEvents(config, eventsKey, fetchImpl, { now: now.getTime() })
+  const eventsPromise = (config.venues ?? []).length > 0
+    ? fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: now.getTime() })
     : Promise.resolve(null);
   const lines = config.transit?.lines ?? [];
   const trackworkPromise = lines.length > 0
