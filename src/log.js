@@ -80,7 +80,7 @@ export const HEADER = Object.freeze([
   'engine_version',
 ]);
 
-export const ENGINE_VERSION = 'switchtender/0.1.0';
+export const ENGINE_VERSION = 'switchtender/1.0.0';
 
 // Meteorological seasons, northern hemisphere. The log is for a commute in
 // one place; a hemisphere flag can come with the first southern user.
