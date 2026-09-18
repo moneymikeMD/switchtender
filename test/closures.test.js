@@ -63,10 +63,7 @@ function eastOf([lat, lon], metres) {
 
 // A hand-built relevant closure record at a point.
 function permitAt([lat, lon], address) {
-  return {
-    address, status: 'Issued', roadClosed: true, layer: 11, lat, lon,
-    effectiveAt: NOW - DAY, expiresAt: NOW + DAY,
-  };
+  return { address, status: 'Issued', roadClosed: true, layer: 11, lat, lon, effectiveAt: NOW - DAY, expiresAt: NOW + DAY };
 }
 
 test('the closure request carries no server-side envelope (it cost 6 s for nothing), WGS84 out, layer 11 flags closures', () => {
@@ -303,10 +300,7 @@ test('assess classifies on-route against off-route permits and keeps the box tot
   assert.equal(result.active, 2);
   assert.equal(result.total, 5);
   assert.deepEqual(result.addresses, ['ON APPROACH ST', 'ON HIGHWAY ST']);
-  assert.deepEqual(result.reasons, [
-    'planned road closure at On Approach St',
-    'planned road closure at On Highway St',
-  ]);
+  assert.deepEqual(result.reasons, ['planned road closure at On Approach St', 'planned road closure at On Highway St']);
   assert.equal(result.score, null);
 
   const wider = assessClosures(records, { now: NOW, points: route, radiusMetres: 1000 });
@@ -321,11 +315,7 @@ test('assess with points null or empty falls back to the box count and appends t
     assert.equal(result.active, 2, `points ${JSON.stringify(points)}`);
     assert.equal(result.total, 2);
     assert.deepEqual(result.addresses, ['ON ST', 'OFF ST']);
-    assert.deepEqual(result.reasons, [
-      'planned road closure at On St',
-      'planned road closure at Off St',
-      NO_ROUTE_REASON,
-    ]);
+    assert.deepEqual(result.reasons, ['planned road closure at On St', 'planned road closure at Off St', NO_ROUTE_REASON]);
   }
 });
 
@@ -348,8 +338,12 @@ test('assess: expired, future, unflagged and layer-10 records do not count; dupl
 
 test('assess caps the spoken list at five and leaves the count honest', () => {
   const records = Array.from({ length: 8 }, (_, i) => ({
-    address: `${i} ST NW`, status: 'Issued', roadClosed: true, layer: 11,
-    effectiveAt: NOW - DAY, expiresAt: NOW + DAY,
+    address: `${i} ST NW`,
+    status: 'Issued',
+    roadClosed: true,
+    layer: 11,
+    effectiveAt: NOW - DAY,
+    expiresAt: NOW + DAY,
   }));
   const result = assessClosures(records, { now: NOW });
   assert.equal(result.active, 8);
@@ -437,23 +431,42 @@ test('the deadline rides along on every request, and a fetch that throws synchro
   const inits = [];
   const signal = AbortSignal.timeout(10_000);
   const { stub } = stubFrom();
-  await fetchClosures(dcConfig, async (url, init) => { inits.push(init); return stub(url); }, { now: NOW, signal });
+  await fetchClosures(
+    dcConfig,
+    async (url, init) => {
+      inits.push(init);
+      return stub(url);
+    },
+    { now: NOW, signal },
+  );
   assert.equal(inits.length, 2);
   assert.ok(inits.every((i) => i.signal === signal));
-  const broken = await fetchClosures(dcConfig, () => { throw new RangeError('no'); }, { now: NOW });
+  const broken = await fetchClosures(
+    dcConfig,
+    () => {
+      throw new RangeError('no');
+    },
+    { now: NOW },
+  );
   assert.equal(broken.active, null);
   assert.match(broken.reasons[0], /\(RangeError\)/);
 });
 
 test('fetch with points: a permit placed on the route is counted and spoken, one off it is only in the total', async () => {
-  const onRoute = { attributes: {
-    WorkLocationFullAddress: 'ON ROUTE ST', StatusDescription: 'Issued', IsRoadClosed: 'Y',
-    EffectiveDate: NOW - DAY, ExpirationDate: NOW + DAY,
-  }, geometry: (([lat, lon]) => ({ x: lon, y: lat }))(eastOf(route[4], 60)) };
-  const offRoute = { attributes: {
-    WorkLocationFullAddress: 'OFF ROUTE ST', StatusDescription: 'Issued', IsRoadClosed: 'Y',
-    EffectiveDate: NOW - DAY, ExpirationDate: NOW + DAY,
-  }, geometry: (([lat, lon]) => ({ x: lon, y: lat }))(eastOf(route[4], 2000)) };
+  const onRoute = {
+    attributes: { WorkLocationFullAddress: 'ON ROUTE ST', StatusDescription: 'Issued', IsRoadClosed: 'Y', EffectiveDate: NOW - DAY, ExpirationDate: NOW + DAY },
+    geometry: (([lat, lon]) => ({ x: lon, y: lat }))(eastOf(route[4], 60)),
+  };
+  const offRoute = {
+    attributes: {
+      WorkLocationFullAddress: 'OFF ROUTE ST',
+      StatusDescription: 'Issued',
+      IsRoadClosed: 'Y',
+      EffectiveDate: NOW - DAY,
+      ExpirationDate: NOW + DAY,
+    },
+    geometry: (([lat, lon]) => ({ x: lon, y: lat }))(eastOf(route[4], 2000)),
+  };
   const layer = { ...l11, features: [offRoute, onRoute] };
   const { stub } = stubFrom({ layers: { 11: layer, 10: l10 } });
   const result = await fetchClosures(config, stub, { now: NOW, points: route });
@@ -495,12 +508,20 @@ test('an HTTP failure is unknown with a reason', async () => {
 });
 
 test('a network error, bad JSON, an ArcGIS error envelope, or a bad config never throws', async () => {
-  const boom = async () => { throw new TypeError('fetch failed'); };
+  const boom = async () => {
+    throw new TypeError('fetch failed');
+  };
   const network = await fetchClosures(config, boom, { now: NOW });
   assert.equal(network.active, null);
   assert.match(network.reasons[0], /network error/);
 
-  const garbage = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } });
+  const garbage = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('x');
+    },
+  });
   assert.equal((await fetchClosures(config, garbage, { now: NOW })).active, null);
 
   const { stub: envelope } = stubFrom({ layers: { 11: { error: { code: 400, message: 'Invalid field' } }, 10: l10 } });

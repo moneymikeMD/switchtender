@@ -9,7 +9,7 @@ import { getJson, getText, USER_AGENT } from '../src/http.js';
 
 // A straight north-south line at longitude -71.2 with two vertices 2 km
 // apart, like the sparse tail of the routes fixture. Not a real place.
-const a = [42.40, -71.2];
+const a = [42.4, -71.2];
 const b = [42.418, -71.2];
 const line = [a, b];
 
@@ -38,7 +38,10 @@ test('nearPolyline honours the radius and never places the unplaceable', () => {
 
 test('getJson and getText never throw, name the failure class, add the query at call time and send one User-Agent', async () => {
   const calls = [];
-  const okJson = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({ hi: 1 }), text: async () => 'hi' }; };
+  const okJson = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, status: 200, json: async () => ({ hi: 1 }), text: async () => 'hi' };
+  };
   const signal = AbortSignal.timeout(10_000);
   assert.deepEqual(await getJson({ url: 'https://x.test/a', params: { p: '1' } }, { fetchImpl: okJson, query: { key: 'k' }, signal }), { data: { hi: 1 } });
   assert.equal(calls[0].url, 'https://x.test/a?p=1&key=k');
@@ -48,14 +51,27 @@ test('getJson and getText never throw, name the failure class, add the query at 
   assert.deepEqual(await getText('https://x.test/b', { fetchImpl: okJson }), { text: 'hi' });
   assert.equal(calls[1].init.headers.Accept, 'text/html');
 
-  const boom = async () => { throw new TypeError('fetch failed: https://x.test/a?key=k'); };
+  const boom = async () => {
+    throw new TypeError('fetch failed: https://x.test/a?key=k');
+  };
   assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: boom }), { error: 'network error (TypeError)' });
   assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => ({ ok: false, status: 503 }) }), { error: 'HTTP 503' });
   assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => undefined }), { error: 'HTTP unknown' });
-  const bad = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x'); }, text: async () => { throw new Error('y'); } });
+  const bad = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('x');
+    },
+    text: async () => {
+      throw new Error('y');
+    },
+  });
   assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: bad }), { error: 'unparseable response' });
   assert.deepEqual(await getText('https://x.test/a', { fetchImpl: bad }), { error: 'unparseable response' });
-  const aborted = async (_url, init) => { throw init.signal.reason; };
+  const aborted = async (_url, init) => {
+    throw init.signal.reason;
+  };
   const result = await getJson('https://x.test/a', { fetchImpl: aborted, signal: AbortSignal.abort(new DOMException('t', 'TimeoutError')) });
   assert.deepEqual(result, { error: 'network error (TimeoutError)' });
 });

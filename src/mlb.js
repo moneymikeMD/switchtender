@@ -43,7 +43,10 @@ export class MlbError extends Error {
   }
 }
 
-const cleanName = (name) => String(name ?? '').trim().toLowerCase();
+const cleanName = (name) =>
+  String(name ?? '')
+    .trim()
+    .toLowerCase();
 
 /**
  * Build the schedule query for one team on one local day. The API filters on
@@ -58,10 +61,7 @@ export function scheduleRequest(teamId, { date } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
     throw new MlbError('mlb: date must be YYYY-MM-DD');
   }
-  return {
-    url: SCHEDULE_ENDPOINT,
-    params: { sportId: '1', teamId: String(teamId), startDate: date, endDate: date },
-  };
+  return { url: SCHEDULE_ENDPOINT, params: { sportId: '1', teamId: String(teamId), startDate: date, endDate: date } };
 }
 
 // "Washington Nationals" -> "Nationals"; "Boston Red Sox" -> "Red Sox". The
@@ -70,7 +70,10 @@ export function scheduleRequest(teamId, { date } = {}) {
 // is for the log; the spoken reason uses the configured venue name.
 const TWO_WORD_NICKNAMES = new Set(['Sox', 'Jays']);
 export function nickname(fullName) {
-  const words = String(fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  const words = String(fullName ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
   if (words.length === 0) return 'unknown';
   if (words.length >= 2 && TWO_WORD_NICKNAMES.has(words[words.length - 1])) {
     return words.slice(-2).join(' ');
@@ -92,10 +95,7 @@ function localClock(ms, timeZone) {
       second: '2-digit',
     }).formatToParts(new Date(ms));
     const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-    return {
-      localDate: `${p.year}-${p.month}-${p.day}`,
-      localTime: `${p.hour}:${p.minute}:${p.second}`,
-    };
+    return { localDate: `${p.year}-${p.month}-${p.day}`, localTime: `${p.hour}:${p.minute}:${p.second}` };
   } catch {
     return { localDate: null, localTime: null };
   }

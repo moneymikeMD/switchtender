@@ -85,7 +85,10 @@ test('incidents are unknown without TRAFFIC_API_KEY, charged once, and fetched w
   const b = await runVerdict(baseConfig({ traffic: true }), { fetchImpl: stubFetch(withKey), log: false });
   assert.notEqual(b.incidents, null);
   assert.equal(b.incidents.score, null, 'a failed lookup is unknown');
-  assert.ok(withKey.some((u) => u.includes('tomtom')), 'TomTom is called with a key');
+  assert.ok(
+    withKey.some((u) => u.includes('tomtom')),
+    'TomTom is called with a key',
+  );
 });
 
 test('a RouteError propagates to the caller', async () => {
@@ -95,16 +98,16 @@ test('a RouteError propagates to the caller', async () => {
 
 test('an enabled log that cannot write reports failure instead of throwing, and never leaves the injected fetch', async () => {
   const seen = [];
-  const result = await runVerdict(baseConfig({ log: true }), {
-    fetchImpl: stubFetch(seen),
-    now: new Date('2026-09-16T12:00:00Z'),
-  });
+  const result = await runVerdict(baseConfig({ log: true }), { fetchImpl: stubFetch(seen), now: new Date('2026-09-16T12:00:00Z') });
   assert.equal(result.logged.ok, false);
   assert.equal(typeof result.logged.error, 'string');
   assert.ok(result.verdict.choice);
   // The token lookup goes through the stub, so the suite never touches the
   // real metadata server (and on a GCE runner would never obtain a real token).
-  assert.ok(seen.some((u) => u.includes('metadata.google.internal')), seen.join('\n'));
+  assert.ok(
+    seen.some((u) => u.includes('metadata.google.internal')),
+    seen.join('\n'),
+  );
 });
 
 test('every extra the engine logs has a column, in EXTRA_COLUMNS order, and the walk components sum', async () => {
@@ -145,9 +148,7 @@ test('a stalled optional feed costs its signal, not the verdict; the deadlines a
     return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
   };
   const started = Date.now();
-  const result = await runVerdict(baseConfig({ traffic: true }), {
-    fetchImpl, log: false, now: new Date('2026-09-17T12:00:00Z'), signalTimeoutMs: 50,
-  });
+  const result = await runVerdict(baseConfig({ traffic: true }), { fetchImpl, log: false, now: new Date('2026-09-17T12:00:00Z'), signalTimeoutMs: 50 });
   assert.ok(Date.now() - started < 2_000, 'the engine did not wait for undici');
   assert.ok(signals >= 4, `incidents, closures, chart and events were all asked (${signals})`);
   assert.ok(result.verdict.choice);
@@ -170,15 +171,13 @@ test('a stalled sheet write is cut off by its deadline and reported, and a modul
     }
     return inner(url, init);
   };
-  const result = await runVerdict(baseConfig({ log: true }), {
-    fetchImpl, now: new Date('2026-09-17T12:00:00Z'), logTimeoutMs: 50,
-  });
+  const result = await runVerdict(baseConfig({ log: true }), { fetchImpl, now: new Date('2026-09-17T12:00:00Z'), logTimeoutMs: 50 });
   assert.equal(result.logged.ok, false);
   assert.match(result.logged.error, /TimeoutError/);
   assert.ok(result.verdict.choice);
 });
 
-test('a vendor answer that breaks a module is that module\'s unknown, while routing is still in flight', async () => {
+test("a vendor answer that breaks a module is that module's unknown, while routing is still in flight", async () => {
   // A numeric entity outside Unicode used to throw RangeError from the
   // track-work parser before routing had answered, and the rejection was
   // unhandled. The page must simply read as unknown or as itself.
@@ -187,7 +186,8 @@ test('a vendor answer that breaks a module is that module\'s unknown, while rout
   const routesFetch = stubFetch();
   const fetchImpl = async (url, init = {}) => {
     if (String(url).includes('wmata.com')) {
-      const html = '<table><tr><th>Start</th><th>End</th><th>Line</th><th>Impact</th></tr><tr><td>Sept. 19</td><td>Sept. 20</td><td>Red</td><td>&#1114112; work</td></tr></table>';
+      const html =
+        '<table><tr><th>Start</th><th>End</th><th>Line</th><th>Impact</th></tr><tr><td>Sept. 19</td><td>Sept. 20</td><td>Red</td><td>&#1114112; work</td></tr></table>';
       return { ok: true, status: 200, text: async () => html };
     }
     // Routing answers after the page does.

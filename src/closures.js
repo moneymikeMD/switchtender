@@ -62,10 +62,7 @@ import { nearPolyline } from './polyline.js';
 const ENDPOINT = 'https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/FeatureServer';
 
 /** What each Active layer can say. Only 11 has a closure flag. */
-export const LAYERS = {
-  10: { name: 'construction', closedField: null },
-  11: { name: 'occupancy', closedField: 'IsRoadClosed' },
-};
+export const LAYERS = { 10: { name: 'construction', closedField: null }, 11: { name: 'occupancy', closedField: 'IsRoadClosed' } };
 
 /** Layers fetchClosures reads for closure records. See the header for why 10 is absent. */
 export const CLOSURE_LAYERS = [11];
@@ -118,10 +115,7 @@ export function checkBox(bbox) {
 /** True when the record has coordinates and they fall inside the box. Unplaceable is outside. */
 export function inBox(record, bbox) {
   if (record?.lat == null || record?.lon == null) return false;
-  return (
-    record.lon >= bbox.min_lon && record.lon <= bbox.max_lon &&
-    record.lat >= bbox.min_lat && record.lat <= bbox.max_lat
-  );
+  return record.lon >= bbox.min_lon && record.lon <= bbox.max_lon && record.lat >= bbox.min_lat && record.lat <= bbox.max_lat;
 }
 
 /**
@@ -135,16 +129,7 @@ export function closuresRequest(layer = LIVENESS_LAYER) {
   const def = checkLayer(layer);
   const where = def.closedField ? `${def.closedField} = 'Y' AND ${ISSUED}` : ISSUED;
   const outFields = def.closedField ? [...COMMON_FIELDS, def.closedField] : COMMON_FIELDS;
-  return {
-    url: `${ENDPOINT}/${layer}/query`,
-    params: {
-      f: 'json',
-      where,
-      outFields: outFields.join(','),
-      returnGeometry: 'true',
-      outSR: '4326',
-    },
-  };
+  return { url: `${ENDPOINT}/${layer}/query`, params: { f: 'json', where, outFields: outFields.join(','), returnGeometry: 'true', outSR: '4326' } };
 }
 
 /**
@@ -161,9 +146,7 @@ export function livenessRequest(layer = LIVENESS_LAYER) {
     params: {
       f: 'json',
       where: '1=1',
-      outStatistics: JSON.stringify([
-        { statisticType: 'max', onStatisticField: 'EffectiveDate', outStatisticFieldName: 'newest' },
-      ]),
+      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'EffectiveDate', outStatisticFieldName: 'newest' }]),
       returnGeometry: 'false',
     },
   };
@@ -193,9 +176,7 @@ function normaliseOne(feature, layer) {
   // ArcGIS point geometry with outSR 4326: x is longitude, y is latitude.
   const g = feature?.geometry ?? {};
   return {
-    address: typeof a.WorkLocationFullAddress === 'string' && a.WorkLocationFullAddress.trim()
-      ? a.WorkLocationFullAddress.trim()
-      : null,
+    address: typeof a.WorkLocationFullAddress === 'string' && a.WorkLocationFullAddress.trim() ? a.WorkLocationFullAddress.trim() : null,
     status: typeof a.StatusDescription === 'string' ? a.StatusDescription : null,
     effectiveAt: epochMs(a.EffectiveDate),
     expiresAt: epochMs(a.ExpirationDate),
@@ -282,9 +263,7 @@ export const NO_ROUTE_REASON = 'planned closures counted District-wide: route ge
 
 /** The unknown shape: every count null, the reason naming the failure class. */
 export function unknownClosures(reason) {
-  return {
-    active: null, total: null, addresses: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null,
-  };
+  return { active: null, total: null, addresses: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null };
 }
 
 const unknown = unknownClosures;
@@ -318,10 +297,7 @@ function stale() {
  * relevant permit with no coordinates counts in total but never in the
  * on-route active count: it cannot be placed, and unplaceable is not near.
  */
-export function assessClosures(
-  records,
-  { now = Date.now(), sourceLive = null, points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
-) {
+export function assessClosures(records, { now = Date.now(), sourceLive = null, points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {}) {
   if (!Array.isArray(records)) return unknown('no data');
   const haveRoute = Array.isArray(points) && points.length > 0;
   const addresses = [];
@@ -398,11 +374,7 @@ export async function loadClosures(config, fetchImpl = fetch, { now = Date.now()
  * the on-route closures; without it the result counts the whole box and says
  * so. The engine calls the two halves itself so the fetch overlaps routing.
  */
-export async function fetchClosures(
-  config,
-  fetchImpl = fetch,
-  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES, signal } = {},
-) {
+export async function fetchClosures(config, fetchImpl = fetch, { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES, signal } = {}) {
   const loaded = await loadClosures(config, fetchImpl, { now, signal });
   if (loaded.failure) return loaded.failure;
   return assessClosures(loaded.records, { now, sourceLive: true, points, radiusMetres });

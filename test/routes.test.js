@@ -5,15 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  parseDuration,
-  summariseCongestion,
-  buildOptions,
-  computeOptions,
-  driveRequest,
-  transitRequest,
-  RouteError,
-} from '../src/routes.js';
+import { parseDuration, summariseCongestion, buildOptions, computeOptions, driveRequest, transitRequest, RouteError } from '../src/routes.js';
 import { decodePolyline, cumulativeDistances } from '../src/polyline.js';
 
 const fixture = JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8'));
@@ -51,19 +43,11 @@ test('an all-clear route scores zero and a fully jammed route scores one', () =>
   const polyline = fixture.driveThrough.polyline.encodedPolyline;
   const clear = {
     polyline: { encodedPolyline: polyline },
-    travelAdvisory: {
-      speedReadingIntervals: [
-        { startPolylinePointIndex: 0, endPolylinePointIndex: 14, speed: 'NORMAL' },
-      ],
-    },
+    travelAdvisory: { speedReadingIntervals: [{ startPolylinePointIndex: 0, endPolylinePointIndex: 14, speed: 'NORMAL' }] },
   };
   const jammed = {
     polyline: { encodedPolyline: polyline },
-    travelAdvisory: {
-      speedReadingIntervals: [
-        { startPolylinePointIndex: 0, endPolylinePointIndex: 14, speed: 'TRAFFIC_JAM' },
-      ],
-    },
+    travelAdvisory: { speedReadingIntervals: [{ startPolylinePointIndex: 0, endPolylinePointIndex: 14, speed: 'TRAFFIC_JAM' }] },
   };
   assert.equal(summariseCongestion(clear).score, 0);
   assert.equal(summariseCongestion(jammed).score, 1);
@@ -72,11 +56,7 @@ test('an all-clear route scores zero and a fully jammed route scores one', () =>
 test('missing speed intervals report unknown, never clear', () => {
   // The distinction that matters: a score of 0 claims the road is clear. Not
   // knowing is a different statement and the verdict must be able to tell.
-  for (const route of [
-    {},
-    { polyline: { encodedPolyline: 'abc' } },
-    { travelAdvisory: { speedReadingIntervals: [] }, polyline: { encodedPolyline: 'abc' } },
-  ]) {
+  for (const route of [{}, { polyline: { encodedPolyline: 'abc' } }, { travelAdvisory: { speedReadingIntervals: [] }, polyline: { encodedPolyline: 'abc' } }]) {
     const summary = summariseCongestion(route);
     assert.equal(summary.score, null);
     assert.equal(summary.unknown, true);
@@ -86,11 +66,7 @@ test('missing speed intervals report unknown, never clear', () => {
 test('out-of-range interval indices are clamped rather than throwing', () => {
   const summary = summariseCongestion({
     polyline: { encodedPolyline: fixture.driveThrough.polyline.encodedPolyline },
-    travelAdvisory: {
-      speedReadingIntervals: [
-        { startPolylinePointIndex: 0, endPolylinePointIndex: 9999, speed: 'NORMAL' },
-      ],
-    },
+    travelAdvisory: { speedReadingIntervals: [{ startPolylinePointIndex: 0, endPolylinePointIndex: 9999, speed: 'NORMAL' }] },
   });
   assert.equal(summary.score, 0);
   assert.ok(summary.totalMetres > 8000);
@@ -132,12 +108,7 @@ test('computeOptions issues three requests from the fork, not from the origin', 
   const stub = async (_url, init) => {
     const body = JSON.parse(init.body);
     seen.push(body);
-    const which =
-      body.travelMode === 'TRANSIT'
-        ? fixture.transit
-        : seen.length === 1
-          ? fixture.driveThrough
-          : fixture.driveToParkAndRide;
+    const which = body.travelMode === 'TRANSIT' ? fixture.transit : seen.length === 1 ? fixture.driveThrough : fixture.driveToParkAndRide;
     return { ok: true, json: async () => ({ routes: [which] }) };
   };
 
@@ -163,13 +134,7 @@ test('computeOptions issues three requests from the fork, not from the origin', 
 
 test('an HTTP failure raises a RouteError that does not echo the request', async () => {
   const stub = async () => ({ ok: false, status: 403, json: async () => ({}) });
-  const config = {
-    route: {
-      decision_point: { lat: 1, lon: 2 },
-      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
-      destination: { lat: 5, lon: 6 },
-    },
-  };
+  const config = { route: { decision_point: { lat: 1, lon: 2 }, park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 }, destination: { lat: 5, lon: 6 } } };
   await assert.rejects(
     () => computeOptions(config, 'k', stub),
     (e) => e instanceof RouteError && e.message.includes('403') && !e.message.includes('latLng'),
@@ -177,35 +142,37 @@ test('an HTTP failure raises a RouteError that does not echo the request', async
 });
 
 test('a rejected fetch, a deadline and a non-JSON body are RouteErrors too, naming the class and not the URL', async () => {
-  const config = {
-    route: {
-      decision_point: { lat: 1, lon: 2 },
-      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
-      destination: { lat: 5, lon: 6 },
-    },
+  const config = { route: { decision_point: { lat: 1, lon: 2 }, park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 }, destination: { lat: 5, lon: 6 } } };
+  const dropped = async () => {
+    throw new TypeError('fetch failed: https://routes.googleapis.com/?key=k');
   };
-  const dropped = async () => { throw new TypeError('fetch failed: https://routes.googleapis.com/?key=k'); };
   await assert.rejects(
     () => computeOptions(config, 'k', dropped),
     (e) => e instanceof RouteError && e.message === 'routes: request failed (TypeError)',
   );
-  const html = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('<'); } });
-  await assert.rejects(() => computeOptions(config, 'k', html), (e) => e instanceof RouteError && /not JSON/.test(e.message));
+  const html = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('<');
+    },
+  });
+  await assert.rejects(
+    () => computeOptions(config, 'k', html),
+    (e) => e instanceof RouteError && /not JSON/.test(e.message),
+  );
   let signal;
-  const seen = async (_url, init) => { signal = init.signal; return { ok: false, status: 500, json: async () => ({}) }; };
+  const seen = async (_url, init) => {
+    signal = init.signal;
+    return { ok: false, status: 500, json: async () => ({}) };
+  };
   await assert.rejects(() => computeOptions(config, 'k', seen), RouteError);
   assert.ok(signal instanceof AbortSignal, 'every Routes call carries a deadline');
 });
 
 test('an empty route list is an error, not an undefined duration', async () => {
   const stub = async () => ({ ok: true, json: async () => ({ routes: [] }) });
-  const config = {
-    route: {
-      decision_point: { lat: 1, lon: 2 },
-      park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 },
-      destination: { lat: 5, lon: 6 },
-    },
-  };
+  const config = { route: { decision_point: { lat: 1, lon: 2 }, park_and_ride: { lat: 3, lon: 4, addl_walk_mins: 5 }, destination: { lat: 5, lon: 6 } } };
   await assert.rejects(() => computeOptions(config, 'k', stub), RouteError);
 });
 
@@ -233,12 +200,7 @@ test('computeOptions asks for the train after the drive to the lot has answered,
   const stub = async (_url, init) => {
     const body = JSON.parse(init.body);
     order.push(body);
-    const which =
-      body.travelMode === 'TRANSIT'
-        ? fixture.transit
-        : order.length === 1
-          ? fixture.driveThrough
-          : fixture.driveToParkAndRide;
+    const which = body.travelMode === 'TRANSIT' ? fixture.transit : order.length === 1 ? fixture.driveThrough : fixture.driveToParkAndRide;
     return { ok: true, json: async () => ({ routes: [which] }) };
   };
   const config = {
@@ -260,12 +222,7 @@ test('computeOptions from the origin starts both drives at home; the transit leg
   const stub = async (_url, init) => {
     const body = JSON.parse(init.body);
     seen.push(body);
-    const which =
-      body.travelMode === 'TRANSIT'
-        ? fixture.transit
-        : seen.length === 1
-          ? fixture.driveThrough
-          : fixture.driveToParkAndRide;
+    const which = body.travelMode === 'TRANSIT' ? fixture.transit : seen.length === 1 ? fixture.driveThrough : fixture.driveToParkAndRide;
     return { ok: true, json: async () => ({ routes: [which] }) };
   };
   const config = {
@@ -303,11 +260,7 @@ test('each walk folds into the leg that ends at its place; the origin walk count
   const stub = async (_url, init) => {
     const body = JSON.parse(init.body);
     const which =
-      body.travelMode === 'TRANSIT'
-        ? fixture.transit
-        : body.destination.location.latLng.latitude === 9
-          ? fixture.driveThrough
-          : fixture.driveToParkAndRide;
+      body.travelMode === 'TRANSIT' ? fixture.transit : body.destination.location.latLng.latitude === 9 ? fixture.driveThrough : fixture.driveToParkAndRide;
     return { ok: true, json: async () => ({ routes: [which] }) };
   };
   const config = {
@@ -339,7 +292,8 @@ test('each walk folds into the leg that ends at its place; the origin walk count
 test('with no parking the drive ends at the destination and takes its walk', async () => {
   const stub = async (_url, init) => {
     const body = JSON.parse(init.body);
-    const which = body.travelMode === 'TRANSIT' ? fixture.transit : body.destination.location.latLng.latitude === 7 ? fixture.driveThrough : fixture.driveToParkAndRide;
+    const which =
+      body.travelMode === 'TRANSIT' ? fixture.transit : body.destination.location.latLng.latitude === 7 ? fixture.driveThrough : fixture.driveToParkAndRide;
     return { ok: true, json: async () => ({ routes: [which] }) };
   };
   const config = {

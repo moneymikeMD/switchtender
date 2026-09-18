@@ -1,0 +1,10 @@
+# Prettier's default glob (`.`) touches everything under the repo. Scope it
+# to the JS source this project actually wants formatted -- not CI workflow
+# YAML, docs, or fixture files, which have their own conventions and get
+# rewritten (quoting, key ordering) in ways unrelated to this project's
+# actual goal (CMB-40: denser JS, not a repo-wide reformat).
+.github/
+docs/
+test/fixtures/
+README.md
+CLAUDE.md

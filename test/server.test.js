@@ -70,13 +70,7 @@ test('/verdict with the right key returns the spoken line, the verdict and a tim
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('content-type'), 'application/json');
   const body = await res.json();
-  assert.deepEqual(body, {
-    spoken: 'Take the train.',
-    verdict,
-    computedAt: '2026-09-16T12:00:00.000Z',
-    logged: null,
-    notified: null,
-  });
+  assert.deepEqual(body, { spoken: 'Take the train.', verdict, computedAt: '2026-09-16T12:00:00.000Z', logged: null, notified: null });
   // One line per request, status and duration, never the key.
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^GET \/verdict 200 \d+ms$/);
@@ -153,10 +147,7 @@ test('a RouteError from the pipeline is 503 and says only that the lookup failed
 });
 
 test('a pipeline that outlives the timeout is 504', async () => {
-  const { base } = await start({
-    run: () => new Promise(() => {}),
-    timeoutMs: 50,
-  });
+  const { base } = await start({ run: () => new Promise(() => {}), timeoutMs: 50 });
   const res = await fetch(`${base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
   assert.equal(res.status, 504);
   assert.deepEqual(await res.json(), { error: 'lookup timed out' });
@@ -177,7 +168,9 @@ function rawRequest(base, target) {
       socket.write(`GET ${target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`);
     });
     let data = '';
-    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('data', (chunk) => {
+      data += chunk;
+    });
     socket.on('end', () => resolve(data));
     socket.on('error', reject);
   });
@@ -191,7 +184,10 @@ test('a request target the URL parser rejects is a 400, not a crashed instance',
   }
   // The server is still up and still answering.
   assert.equal((await fetch(`${base}/health`)).status, 200);
-  assert.ok(lines.every((l) => !l.includes('error')), lines.join('\n'));
+  assert.ok(
+    lines.every((l) => !l.includes('error')),
+    lines.join('\n'),
+  );
 });
 
 test('a failed sheet write is logged by name and returned in the body; a good one is silent', async () => {
@@ -201,7 +197,10 @@ test('a failed sheet write is logged by name and returned in the body; a good on
   const res = await fetch(`${failed.base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).logged, { ok: false, error: 'sheets 403: The caller does not have permission' });
-  assert.ok(failed.lines.some((l) => l === 'log failed: sheets 403: The caller does not have permission'), failed.lines.join('\n'));
+  assert.ok(
+    failed.lines.some((l) => l === 'log failed: sheets 403: The caller does not have permission'),
+    failed.lines.join('\n'),
+  );
 
   const fine = await start({ run: async () => ({ verdict, spoken: 'Take the train.', logged: { ok: true, error: null } }) });
   await fetch(`${fine.base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
