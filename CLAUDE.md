@@ -67,6 +67,9 @@ file ownership, reviews the diff, merges, runs `npm test` and a live
    and to the mobile app.
 8. **Commits are attributed to the owner alone.** No AI co-author or session
    trailers.
+9. **Commit subjects follow Conventional Commits** (`type: subject`, e.g.
+   `fix:`, `feat:`, `chore:`, `docs:`). Adopted 2026-09-18; earlier history
+   predates it and is not rewritten.
 
 ## Settled data sources
 
