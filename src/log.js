@@ -112,6 +112,11 @@ export const EXTRA_COLUMNS = Object.freeze([
   // and whether the incident signal was matched to the route.
   'transit_walk_seconds',
   'incidents_route_matched',
+  // Added 2026-09-18 (CMB-35): live WMATA rail alerts on the transit leg's lines.
+  'wmata_active',
+  'wmata_lines',
+  'wmata_categories',
+  'wmata_reasons',
 ]);
 
 export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);

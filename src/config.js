@@ -15,18 +15,12 @@ import { parse } from 'smol-toml';
 
 import { LINES } from './trackwork.js';
 
-/**
- * Secrets, and what losing each one costs.
- *
- * TRANSIT_API_KEY (WMATA rail alerts) is deliberately absent: no module reads
- * it yet, and listing it charged a confidence penalty for a feed that does
- * not exist and refunded it when the key was merely present. Add it back
- * with the module that consumes it.
- */
+/** Secrets, and what losing each one costs. */
 export const SECRETS = {
   ROUTES_API_KEY: { required: true, signal: 'routing' },
   TRAFFIC_API_KEY: { required: false, signal: 'live incidents' },
   EVENTS_API_KEY: { required: false, signal: 'scheduled events' },
+  TRANSIT_API_KEY: { required: false, signal: 'rail alerts' }, // CMB-35, src/wmata.js
 };
 
 // Every place in [route] has one shape (CMB-33): where it is, what to call it,

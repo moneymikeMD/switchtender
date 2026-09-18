@@ -30,6 +30,7 @@ import { loadClosures, assessClosures, unknownClosures } from './closures.js';
 import { loadChart, assessChart, unknownChart } from './chart.js';
 import { fetchEvents, unknownEvents } from './events.js';
 import { fetchTrackwork, unknownTrackwork } from './trackwork.js';
+import { fetchWmata, unknownWmata } from './wmata.js';
 
 // A vendor that has not answered by now costs its signal, not the verdict.
 // DDOT used to take 6 s on its own before the envelope filter was dropped;
@@ -56,7 +57,7 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  *                           for a whole-trip estimate from home (CMB-30)
  * @param options.signalTimeoutMs  deadline per optional feed
  * @param options.logTimeoutMs     deadline for the sheet write
- * @returns { options, incidents, closures, maryland, events, trackwork, verdict, spoken, logged }
+ * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
  *          where events and trackwork are null when not consulted (no venues, no lines),
  *          where logged is { ok, error } or null when nothing was attempted.
  * @throws RouteError when the onward options cannot be computed.
@@ -90,24 +91,31 @@ export async function runVerdict(
           unknownTrackwork,
         )
       : Promise.resolve(null);
+  // WMATA rail alerts (CMB-35): same gate as track work (no lines configured
+  // means transit isn't scored at all), missing key handled inside fetchWmata.
+  const wmataPromise =
+    lines.length > 0
+      ? guardWhole(fetchWmata(lines, secrets.keys.TRANSIT_API_KEY ?? null, fetchImpl, { signal: deadline() }), unknownWmata)
+      : Promise.resolve(null);
 
   const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, { from, now });
 
   // Incidents (CMB-22, route-matched since 2026-09-17), closures (CMB-28) and
   // Maryland records (CMB-16) are matched against the drive geometry.
   const points = options.driveThrough.points;
-  const [incidentsLoaded, closuresLoaded, chartLoaded, events, trackwork] = await Promise.all([
+  const [incidentsLoaded, closuresLoaded, chartLoaded, events, trackwork, wmata] = await Promise.all([
     incidentsLoad,
     closuresLoad,
     chartLoad,
     eventsPromise,
     trackworkPromise,
+    wmataPromise,
   ]);
   const incidents = incidentsLoaded.failure ?? assessTrajectory(incidentsLoaded.incidents, { now: nowMs, points });
   const closures = closuresLoaded.failure ?? assessClosures(closuresLoaded.records, { now: nowMs, sourceLive: true, points });
   const maryland = chartLoaded.failure ?? assessChart(chartLoaded.records, points, { now: nowMs, sourceLive: true });
 
-  const verdict = decide(options, decision, { incidents, closures, maryland, events, trackwork, now, timeZone: config.route.timezone });
+  const verdict = decide(options, decision, { incidents, closures, maryland, events, trackwork, wmata, now, timeZone: config.route.timezone });
 
   // CMB-11. Signals that postdate the frozen HEADER travel as extras and
   // become the EXTRA_COLUMNS, in that order. A failed write is reported,
@@ -136,9 +144,13 @@ export async function runVerdict(
       transit_arrival: verdict.transitArrival,
       transit_walk_seconds: options.parkAndRide.walkSeconds ?? 0,
       incidents_route_matched: incidents.score === null ? null : incidents.routeMatched,
+      wmata_active: wmata && !wmata.unknown ? wmata.active : null,
+      wmata_lines: wmata && !wmata.unknown ? (wmata.lines ?? []).join(' | ') : null,
+      wmata_categories: wmata && !wmata.unknown ? (wmata.categories ?? []).join(' | ') : null,
+      wmata_reasons: wmata && !wmata.unknown ? (wmata.reasons ?? []).join(' | ') : null,
     };
     logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
   }
 
-  return { options, incidents, closures, maryland, events, trackwork, verdict, spoken: speak(verdict), logged };
+  return { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken: speak(verdict), logged };
 }
