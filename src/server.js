@@ -23,11 +23,23 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS } from './routes.js';
 import { runVerdict } from './engine.js';
+import { getLastChoice, tokenFromEnvOrMetadata } from './log.js';
+import { pushIfChanged } from './notify.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
 export const SECRET_ENV = 'SWITCHTENDER_SHARED_SECRET';
+export const NTFY_TOPIC_ENV = 'NTFY_TOPIC';
 export const DEFAULT_PORT = 8080;
 export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** The choice most recently logged (CMB-37). Never throws; missing credentials or a failed read just mean no prior choice to compare against. */
+async function defaultPreviousChoice(config, fetchImpl) {
+  const token = await tokenFromEnvOrMetadata({ fetchImpl });
+  if (!token) return { ok: false, choice: null, error: 'no credentials' };
+  const sheetId = config?.log?.sheet_id;
+  if (!sheetId) return { ok: false, choice: null, error: 'no sheet id configured' };
+  return getLastChoice({ sheetId, tab: config?.log?.sheet_tab ?? 'verdicts', token, fetchImpl });
+}
 
 /**
  * Constant-time comparison of a presented key against the secret.
@@ -82,6 +94,9 @@ export function createServer({
   now = () => new Date(),
   timeoutMs = REQUEST_TIMEOUT_MS,
   logger = (line) => console.error(line),
+  fetchImpl = fetch,
+  previousChoice = defaultPreviousChoice,
+  push = pushIfChanged,
 }) {
   if (typeof secret !== 'string' || secret.length === 0) {
     throw new Error(`${SECRET_ENV} is not set`);
@@ -146,16 +161,38 @@ export function createServer({
       return pathname;
     }
 
+    // Cloud Scheduler's morning call only (CMB-37); read before `run`
+    // appends its own row, or the comparison would be against itself.
+    const notify = url.searchParams.get('notify') === '1';
+
     const computedAt = now();
     try {
-      const { verdict, spoken, logged = null } = await withTimeout(
-        run(config, { now: computedAt, from }),
+      const [{ verdict, spoken, logged = null }, prior] = await withTimeout(
+        Promise.all([
+          run(config, { now: computedAt, from }),
+          notify ? previousChoice(config, fetchImpl) : Promise.resolve(null),
+        ]),
         timeoutMs,
       );
       // A failed sheet write is the one failure nobody would otherwise see
       // from the phone: the verdict is fine, the tuning log just stops.
       if (logged && !logged.ok) logger(`log failed: ${logged.error}`);
-      send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString(), logged });
+
+      let notified = null;
+      if (notify) {
+        if (prior && !prior.ok) logger(`notify: previous choice unavailable (${prior.error})`);
+        const topic = (process.env[NTFY_TOPIC_ENV] ?? '').trim();
+        notified = await push({
+          choice: verdict.choice,
+          previousChoice: prior?.choice ?? null,
+          spoken,
+          topic,
+          fetchImpl,
+        });
+        if (!notified.ok) logger(`notify failed: ${notified.error}`);
+      }
+
+      send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString(), logged, notified });
     } catch (error) {
       if (error instanceof RouteError) {
         send(res, 503, { error: 'lookup failed' });

@@ -16,6 +16,7 @@ import {
   ensureHeader,
   logVerdict,
   tokenFromEnvOrMetadata,
+  getLastChoice,
 } from '../src/log.js';
 import { parseConfig, ConfigError } from '../src/config.js';
 
@@ -207,6 +208,37 @@ test('appendRow reports a network failure without throwing', async () => {
   assert.equal(result.ok, false);
   assert.equal(result.status, 0);
   assert.match(result.error, /ECONNRESET/);
+});
+
+test('getLastChoice reads the choice column (AC) and returns the last non-empty value', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return jsonResponse(200, { values: [['drive'], ['drive'], ['transit']] });
+  };
+  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
+  assert.deepEqual(result, { ok: true, choice: 'transit', error: null });
+  assert.match(decodeURIComponent(calls[0]), /values\/'verdicts'!AC2:AC$/);
+});
+
+test('getLastChoice skips a trailing blank row (a partial write) and returns the last real value', async () => {
+  const fetchImpl = async () => jsonResponse(200, { values: [['drive'], ['transit'], ['']] });
+  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
+  assert.equal(result.choice, 'transit');
+});
+
+test('getLastChoice on an empty column is ok:true with choice null, not an error', async () => {
+  const fetchImpl = async () => jsonResponse(200, {});
+  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
+  assert.deepEqual(result, { ok: true, choice: null, error: null });
+});
+
+test('getLastChoice reports a failed read as ok:false without throwing', async () => {
+  const fetchImpl = async () => jsonResponse(403, { error: { message: 'no permission' } });
+  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
+  assert.equal(result.ok, false);
+  assert.equal(result.choice, null);
+  assert.match(result.error, /403/);
 });
 
 test('ensureHeader writes FULL_HEADER when row 1 is empty and leaves a matching header alone', async () => {
