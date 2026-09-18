@@ -1,6 +1,6 @@
 {
   "name": "switchtender",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Decides drive-through versus park-and-ride at a configurable fork in a commute",
   "directories": {
     "doc": "docs"
