@@ -296,6 +296,33 @@ export async function appendRow(row, { sheetId, tab, token, fetchImpl = fetch, s
   return { ok: result.ok, status: result.status, error: result.error ?? null };
 }
 
+/** 0-based column index -> A1 column letters (0 -> A, 27 -> AB). */
+function columnLetter(index) {
+  let letters = '';
+  let n = index + 1;
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+const CHOICE_COLUMN = columnLetter(HEADER.indexOf('choice'));
+
+/** The most recent logged `choice` (CMB-37). Null means never logged or the read failed, not "clear". */
+export async function getLastChoice({ sheetId, tab, token, fetchImpl = fetch, signal }) {
+  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${CHOICE_COLUMN}2:${CHOICE_COLUMN}`)}`;
+  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  if (!result.ok) return { ok: false, choice: null, error: result.error };
+  const values = result.body?.values ?? [];
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const value = values[i]?.[0];
+    if (typeof value === 'string' && value) return { ok: true, choice: value, error: null };
+  }
+  return { ok: true, choice: null, error: null };
+}
+
 const isPrefix = (shorter, longer) =>
   shorter.length <= longer.length && shorter.every((v, i) => v === longer[i]);
 

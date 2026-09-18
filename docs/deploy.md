@@ -31,6 +31,7 @@ Secrets and where they land in the container:
 | `switchtender-transit-api-key` | `TRANSIT_API_KEY` |
 | `switchtender-events-api-key` | `EVENTS_API_KEY` |
 | `switchtender-shared-secret` | `SWITCHTENDER_SHARED_SECRET` |
+| `switchtender-ntfy-topic` | `NTFY_TOPIC` |
 
 The image (`Dockerfile`) holds `src/` and the Boston example config only.
 `.dockerignore` and `.gcloudignore` keep `config.toml` and `.env` out of both
@@ -65,6 +66,41 @@ scripts/deploy-cloud-run.sh --update-config
 
 A new secret version is mounted by the new revision. Without the flag the
 script keeps the existing version.
+
+## Weekday morning push (CMB-36, CMB-37)
+
+A Cloud Scheduler job `switchtender-verdict-check`, weekdays 7:00 AM
+`America/New_York`, calls `/verdict?notify=1`. That query flag is the only
+thing that turns on the push check — the phone's geofence-triggered call and
+`make poll`/`make poll-local` never set it, so a push notification fires at
+most once a day, only from this scheduled call, whether or not the commute
+actually happens that day (owner decision 2026-09-18).
+
+The server reads the `choice` most recently logged to the sheet (before this
+call's own row lands, or the comparison would be a row against itself) and,
+if it differs from this call's `choice`, posts the spoken line to
+`https://ntfy.sh/$NTFY_TOPIC`. `ntfy.sh` is the public instance (CMB-36):
+self-hosting was rejected because it would mean this scale-to-zero public
+service reaching back into a private network. The free tier has no
+per-topic auth, so `NTFY_TOPIC` — a long random slug from `openssl rand -hex
+20`, never the word "switchtender" — is itself the secret, minted and stored
+the same way as the shared secret (1Password item `Switchtender ntfy topic`
+in `Software_Development`, field `credential`). Subscribe to that topic in
+the ntfy Android app (the Google Play build; confirmed FCM-backed, so
+delivery works with the app closed) to receive the push.
+
+The response body's `notified` field (`null` outside `?notify=1`, otherwise
+`{ ok, sent, error }`) says what happened: `sent: false` covers both "nothing
+to say" (no topic configured, no prior choice on record, or no change) and a
+failed push, which is also logged server-side (never crashes the request —
+a push is a courtesy, not part of the verdict).
+
+Cloud Scheduler has no way to pull a header value from Secret Manager for an
+HTTP target, so the shared secret is written into the job definition itself,
+readable by anyone with Cloud Scheduler access on this project — the owner
+alone, same trust boundary as everything else here. Re-running
+`scripts/deploy-cloud-run.sh` updates the job in place if the service URL or
+secret ever changes.
 
 ## Logs
 

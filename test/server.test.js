@@ -15,7 +15,7 @@ const verdict = { choice: 'transit', confidence: 0.7, reasons: ['test'] };
 const servers = [];
 after(() => Promise.all(servers.map((s) => new Promise((r) => s.close(r)))));
 
-async function start({ run, logger = () => {}, timeoutMs } = {}) {
+async function start({ run, logger = () => {}, timeoutMs, previousChoice, push } = {}) {
   const lines = [];
   const server = createServer({
     config,
@@ -23,6 +23,8 @@ async function start({ run, logger = () => {}, timeoutMs } = {}) {
     run: run ?? (async () => ({ verdict, spoken: 'Take the train.' })),
     now: () => new Date('2026-09-16T12:00:00Z'),
     timeoutMs,
+    previousChoice,
+    push,
     logger: (line) => {
       lines.push(line);
       logger(line);
@@ -73,11 +75,70 @@ test('/verdict with the right key returns the spoken line, the verdict and a tim
     verdict,
     computedAt: '2026-09-16T12:00:00.000Z',
     logged: null,
+    notified: null,
   });
   // One line per request, status and duration, never the key.
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^GET \/verdict 200 \d+ms$/);
   assert.ok(!lines[0].includes(SECRET));
+});
+
+test('?notify=1 is ignored without a key: no push, plain 401', async () => {
+  const { base } = await start({
+    previousChoice: async () => {
+      throw new Error('should not be reached before the key check');
+    },
+  });
+  const res = await fetch(`${base}/verdict?notify=1`);
+  assert.equal(res.status, 401);
+});
+
+test('without ?notify=1, the prior choice is never fetched and notified is null', async () => {
+  const { base } = await start({
+    previousChoice: async () => {
+      throw new Error('should not be called');
+    },
+  });
+  const res = await fetch(`${base}/verdict`, { headers: { [KEY_HEADER]: SECRET } });
+  const body = await res.json();
+  assert.equal(body.notified, null);
+});
+
+test('?notify=1 fetches the prior choice and calls push with it, alongside the run', async () => {
+  const calls = [];
+  const { base } = await start({
+    previousChoice: async (cfg, fetchImpl) => {
+      calls.push('previousChoice');
+      assert.equal(cfg, config);
+      return { ok: true, choice: 'drive', error: null };
+    },
+    push: async (args) => {
+      calls.push(['push', args]);
+      return { ok: true, sent: true, error: null };
+    },
+  });
+  const res = await fetch(`${base}/verdict?notify=1`, { headers: { [KEY_HEADER]: SECRET } });
+  const body = await res.json();
+  assert.deepEqual(body.notified, { ok: true, sent: true, error: null });
+  assert.equal(calls[0], 'previousChoice');
+  assert.deepEqual(calls[1][1].previousChoice, 'drive');
+  assert.equal(calls[1][1].choice, verdict.choice);
+  assert.equal(calls[1][1].spoken, 'Take the train.');
+});
+
+test('a failed prior-choice read is logged but does not fail the request; push sees previousChoice null', async () => {
+  const logged = [];
+  const { base } = await start({
+    previousChoice: async () => ({ ok: false, choice: null, error: 'sheets 403: no permission' }),
+    push: async (args) => {
+      assert.equal(args.previousChoice, null);
+      return { ok: true, sent: false, error: null };
+    },
+    logger: (line) => logged.push(line),
+  });
+  const res = await fetch(`${base}/verdict?notify=1`, { headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  assert.ok(logged.some((line) => line.includes('previous choice unavailable')));
 });
 
 test('a RouteError from the pipeline is 503 and says only that the lookup failed', async () => {

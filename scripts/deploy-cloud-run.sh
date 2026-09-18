@@ -28,6 +28,8 @@ RUNTIME_SA="commuter-bot@${PROJECT}.iam.gserviceaccount.com"
 CONFIG_FILE="${SWITCHTENDER_CONFIG:-./config.toml}"
 OP_VAULT="Software_Development"
 OP_SHARED_ITEM="Switchtender shared secret"
+OP_NTFY_ITEM="Switchtender ntfy topic"
+SCHEDULER_JOB="switchtender-verdict-check"
 
 update_config=0
 rotate_secret=0
@@ -57,6 +59,7 @@ gcloud services enable \
   secretmanager.googleapis.com \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
+  cloudscheduler.googleapis.com \
   --quiet
 
 secret_exists() { gcloud secrets describe "$1" --quiet >/dev/null 2>&1; }
@@ -142,6 +145,25 @@ else
   op_value "$shared_path" | create_secret_from_stdin switchtender-shared-secret
 fi
 
+# ntfy.sh push topic (CMB-36, CMB-37). The public instance has no per-topic
+# auth, so the topic name itself is the secret: a long random slug, never
+# the literal word "switchtender". Same mint-if-missing pattern as the
+# shared secret, its own 1Password item so it is never confused with (or
+# rotated alongside) the phone's auth key.
+ntfy_path="op://${OP_VAULT}/${OP_NTFY_ITEM}/credential"
+mint_ntfy_topic() {
+  local value
+  value="$(openssl rand -hex 20)"
+  log "creating 1Password item ${OP_NTFY_ITEM}"
+  printf '{"title":"%s","category":"API_CREDENTIAL","vault":{"name":"%s"},"fields":[{"id":"credential","type":"CONCEALED","label":"credential","value":"%s"}]}' \
+    "$OP_NTFY_ITEM" "$OP_VAULT" "$value" \
+    | op item create - >/dev/null
+}
+if ! op read "$ntfy_path" >/dev/null 2>&1; then
+  mint_ntfy_topic
+fi
+op_value "$ntfy_path" | create_secret_from_stdin switchtender-ntfy-topic
+
 # The commute description. Gitignored, never in the image; mounted as a file.
 if [ "$update_config" = 1 ]; then
   add_secret_version_from_stdin switchtender-config <"$CONFIG_FILE"
@@ -152,7 +174,7 @@ fi
 log "granting ${RUNTIME_SA} read access to each secret"
 for name in switchtender-routes-api-key switchtender-traffic-api-key \
   switchtender-transit-api-key switchtender-events-api-key \
-  switchtender-shared-secret switchtender-config; do
+  switchtender-shared-secret switchtender-ntfy-topic switchtender-config; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member "serviceAccount:${RUNTIME_SA}" \
     --role roles/secretmanager.secretAccessor \
@@ -186,9 +208,43 @@ gcloud run deploy "$SERVICE" \
   --memory 256Mi \
   --timeout 30 \
   --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production" \
-  --set-secrets "/config/config.toml=switchtender-config:latest,ROUTES_API_KEY=switchtender-routes-api-key:latest,TRAFFIC_API_KEY=switchtender-traffic-api-key:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,EVENTS_API_KEY=switchtender-events-api-key:latest,SWITCHTENDER_SHARED_SECRET=switchtender-shared-secret:latest" \
+  --set-secrets "/config/config.toml=switchtender-config:latest,ROUTES_API_KEY=switchtender-routes-api-key:latest,TRAFFIC_API_KEY=switchtender-traffic-api-key:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,EVENTS_API_KEY=switchtender-events-api-key:latest,SWITCHTENDER_SHARED_SECRET=switchtender-shared-secret:latest,NTFY_TOPIC=switchtender-ntfy-topic:latest" \
   --quiet
 
 url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 log "deployed: ${url}"
 log "check: curl -s -o /dev/null -w '%{http_code}\n' ${url}/health"
+
+# Weekday morning push check (CMB-36, CMB-37). The geofence-triggered phone
+# call and any manual poll never set ?notify=1, so this scheduled call is the
+# only trigger for a push, and it fires whether or not the owner actually
+# drives that day (owner decision 2026-09-18) -- a fixed clock time, not tied
+# to the geofence. Cloud Scheduler has no way to read a header value out of
+# Secret Manager for an HTTP target, so the shared secret is written into the
+# job definition itself (readable by anyone with Cloud Scheduler access on
+# this project, i.e. the owner alone -- same trust boundary as everything
+# else here).
+shared_secret_value="$(op_value "$shared_path")"
+scheduler_target="${url}/verdict?notify=1"
+if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --quiet >/dev/null 2>&1; then
+  log "updating Cloud Scheduler job ${SCHEDULER_JOB}"
+  gcloud scheduler jobs update http "$SCHEDULER_JOB" \
+    --location "$REGION" \
+    --uri "$scheduler_target" \
+    --http-method GET \
+    --headers "X-Switchtender-Key=${shared_secret_value}" \
+    --schedule "0 7 * * 1-5" \
+    --time-zone "America/New_York" \
+    --quiet >/dev/null
+else
+  log "creating Cloud Scheduler job ${SCHEDULER_JOB}"
+  gcloud scheduler jobs create http "$SCHEDULER_JOB" \
+    --location "$REGION" \
+    --uri "$scheduler_target" \
+    --http-method GET \
+    --headers "X-Switchtender-Key=${shared_secret_value}" \
+    --schedule "0 7 * * 1-5" \
+    --time-zone "America/New_York" \
+    --quiet >/dev/null
+fi
+log "scheduler: weekdays 7:00 AM America/New_York -> ${scheduler_target}"
