@@ -8,3 +8,7 @@ docs/
 test/fixtures/
 README.md
 CLAUDE.md
+# release-please owns these and rewrites them in its own style on every
+# release PR; Prettier fighting that just fails CI on every release.
+CHANGELOG.md
+.release-please-manifest.json
