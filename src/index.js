@@ -100,7 +100,7 @@ async function main() {
     throw error;
   }
 
-  const { options, incidents, closures, maryland, events, trackwork, verdict, spoken, logged } = result;
+  const { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged } = result;
   const { driveThrough, parkAndRide } = options;
   console.log(`\nFrom ${options.startLabel ?? route.decision_point.label}:`);
   const walk = driveThrough.walkSeconds > 0 ? `${minutes(driveThrough.driveSeconds)} drive + ${minutes(driveThrough.walkSeconds)} walk, ` : '';
@@ -136,6 +136,9 @@ async function main() {
         ? `  track work unknown (${trackwork.reasons[0]})`
         : `  track work ${trackwork.active} active, ${trackwork.upcoming} upcoming on ${config.transit.lines.join('/')}`,
     );
+  }
+  if (wmata) {
+    console.log(wmata.unknown ? `  rail alerts unknown (${wmata.reasons[0]})` : `  rail alerts ${wmata.active} active on ${config.transit.lines.join('/')}`);
   }
 
   console.log('\nVerdict:');

@@ -34,6 +34,7 @@ export const PENALTY_ROUTE_DISRUPTION = 0.1; // a planned closure or Maryland re
 export const PENALTY_UNKNOWN_FEED = 0.1; // a keyless feed was tried and failed
 export const PENALTY_EVENING_EVENT = 0.1; // a scheduled event near the destination this evening (CMB-13)
 export const PENALTY_TRACK_WORK = 0.2; // planned track work on the transit leg right now (CMB-26)
+export const PENALTY_RAIL_ALERT = 0.15; // a live WMATA rail alert on a configured line (CMB-35), a starting guess between PENALTY_UNKNOWN_FEED and PENALTY_TRACK_WORK
 export const CLOSE_CALL_MINUTES = 2; // |margin - required| below this is close
 export const CONFIDENCE_FLOOR = 0.1; // never zero: a verdict was still given
 
@@ -238,6 +239,21 @@ export function decide(options, decision, context = {}) {
     }
   }
 
+  // Live WMATA rail alerts on the transit leg's configured lines (CMB-35).
+  // Same treatment as track work: a real-time signal on the transit option,
+  // never the choice.
+  const wmata = context.wmata ?? null;
+  const wmataActive = wmata && !wmata.unknown ? wmata.active : null;
+  if (wmata) {
+    if (wmata.unknown) {
+      confidence -= PENALTY_UNKNOWN_FEED;
+      caveats.push(wmata.reasons?.[0] ?? 'rail alerts unavailable');
+    } else if (wmata.active > 0) {
+      confidence -= PENALTY_RAIL_ALERT;
+      findings.push(...(wmata.reasons ?? []).slice(0, MAX_INCIDENT_REASONS));
+    }
+  }
+
   const reasons = [...core, ...findings, ...caveats];
   confidence = Math.max(CONFIDENCE_FLOOR, round1(Math.min(1, confidence)));
 
@@ -267,6 +283,7 @@ export function decide(options, decision, context = {}) {
     marylandOnRoute,
     eveningEvents,
     trackworkActive,
+    wmataActive,
     confidence,
     reasons,
   };

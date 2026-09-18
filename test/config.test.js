@@ -96,10 +96,15 @@ test('a missing optional secret degrades a named signal instead of failing', () 
   assert.equal(keys.ROUTES_API_KEY, 'test-value');
 });
 
-test('with every key present nothing is degraded, and the unread rail-alerts key is not a secret the engine scores', () => {
+test('with every key present nothing is degraded', () => {
   assert.deepEqual(loadSecrets(allKeys).degraded, []);
-  assert.equal('TRANSIT_API_KEY' in SECRETS, false, 'no module reads it; listing it moved confidence for nothing');
-  assert.deepEqual(loadSecrets({ ...allKeys, TRANSIT_API_KEY: 'x' }).degraded, []);
+});
+
+test('a missing rail-alerts key degrades its own signal (CMB-35)', () => {
+  const { TRANSIT_API_KEY, ...rest } = allKeys;
+  const { keys, degraded } = loadSecrets(rest);
+  assert.deepEqual(degraded, ['rail alerts']);
+  assert.equal(keys.ROUTES_API_KEY, 'test-value');
 });
 
 test('an unknown time zone, a non-finite number, a bad clock time or a negative margin fail at startup, not on the first verdict', () => {

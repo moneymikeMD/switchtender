@@ -276,6 +276,44 @@ test('unknown events or schedule cost a little, are spoken, and leave counts nul
   assert.ok(v.reasons.some((r) => r.startsWith('track work schedule unavailable')));
 });
 
+// WMATA rail alerts (CMB-35): same treatment as track work.
+
+const noWmataAlerts = { active: 0, unknown: false, lines: [], categories: [], reasons: [] };
+const railAlert = { active: 1, unknown: false, lines: ['Red'], categories: ['alert'], reasons: ['Single tracking on the Red Line'] };
+const noWmataFeed = { active: null, unknown: true, reasons: ['rail alerts unavailable: HTTP 500'] };
+
+test('no active rail alerts cost nothing and record zero, not null', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { wmata: noWmataAlerts });
+  assert.equal(v.confidence, clean.confidence);
+  assert.equal(v.wmataActive, 0);
+});
+
+test('an active rail alert on a configured line lowers confidence, is spoken, never flips the choice', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { wmata: railAlert });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.15));
+  assert.equal(v.wmataActive, 1);
+  assert.ok(v.reasons.includes(railAlert.reasons[0]));
+});
+
+test('an unknown rail-alerts feed costs a little, is spoken, and leaves the count null', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, { wmata: noWmataFeed });
+  assert.equal(v.choice, clean.choice);
+  assert.equal(v.confidence, round(clean.confidence - 0.1));
+  assert.equal(v.wmataActive, null);
+  assert.ok(v.reasons.some((r) => r.startsWith('rail alerts unavailable')));
+});
+
+test('no wmata context at all leaves wmataActive null without touching confidence', () => {
+  const clean = decide(options(30, 60, 0), decision);
+  const v = decide(options(30, 60, 0), decision, {});
+  assert.equal(v.confidence, clean.confidence);
+  assert.equal(v.wmataActive, null);
+});
+
 test('speak says at most three reason clauses and keeps the rest for the log', () => {
   const v = decide(options(30, 60, 0), decision, { incidents: unstableBox, closures: someClosures, maryland: busyMaryland, events: gameTonight });
   assert.ok(v.reasons.length > 3);
