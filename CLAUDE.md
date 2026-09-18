@@ -37,8 +37,28 @@ Fast code production with tests. This repo does not run the night-watchman
 operating model: no session-start, wave trail, spec-reviewer or
 script-reviewer here (owner decision 2026-09-16). A session reads memory-graph
 and this file, dispatches one plain worktree subagent per ticket with disjoint
-file ownership, reviews the diff, merges, runs `npm test` and a live
-`npm start`, closes the Jira ticket with a comment, pushes.
+file ownership, reviews the diff, runs `npm test` and a live `npm start`.
+
+**Every change lands through a PR, merged right away, not left open**
+(owner decision 2026-09-18). `main` requires a pull request via a GitHub
+ruleset — no direct push. This is for change visibility and a second,
+GitHub-native record of what shipped, not for a review gate: open the PR,
+merge it immediately once CI is green. **PR bodies are capped at 1000
+characters** (owner's rule; `.github/workflows/pr-body-length.yml` fails
+the PR if it isn't). CI (`.github/workflows/ci.yml`) runs `npm test` on
+every push and PR and is a required check. Close the Jira ticket with a
+comment after merge.
+
+Dependabot opens weekly PRs for npm and GitHub Actions dependencies
+(`.github/dependabot.yml`); patch/minor updates auto-merge once CI passes
+(`.github/workflows/dependabot-auto-merge.yml`), major bumps wait for a
+human. `release-please` (`.github/workflows/release-please.yml`) opens a
+release PR from Conventional Commits history and maintains `CHANGELOG.md`
+on merge — commit subjects must stay Conventional Commits (rule 9) for
+this to produce a sane changelog. `docs/` stays the source of truth for
+prose docs; the GitHub Wiki mirrors `docs/*.md` automatically on push
+(`.github/workflows/wiki-sync.yml`) — edit the repo, never the wiki
+directly.
 
 ## Rules
 
