@@ -1,0 +1,19 @@
+name: PR body length
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          len=$(printf '%s' "$BODY" | wc -c)
+          echo "PR body is $len characters"
+          if [ "$len" -gt 1000 ]; then
+            echo "::error::PR body is $len characters, over the 1000 character limit"
+            exit 1
+          fi
+        env:
+          BODY: ${{ github.event.pull_request.body }}
