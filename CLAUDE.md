@@ -63,6 +63,29 @@ prose docs; the GitHub Wiki mirrors `docs/*.md` automatically on push
 (`.github/workflows/wiki-sync.yml`) — edit the repo, never the wiki
 directly.
 
+### GitHub Actions permissions and the GITHUB_TOKEN quirk
+
+Repo setting **Settings > Actions > General > Workflow permissions** is
+**"Read and write permissions"** with **"Allow GitHub Actions to create and
+approve pull requests"** checked. Without it, `release-please` fails with
+"GitHub Actions is not permitted to create or approve pull requests" — it
+opens its own release PR using the default `GITHUB_TOKEN`, which needs that
+grant.
+
+**A commit pushed with the default `GITHUB_TOKEN` does not trigger other
+workflows** (GitHub's anti-recursion guard). `release-please` rebasing its
+own PR on every push to `main` is exactly this: the rebase commit lands,
+but `ci.yml`'s `pull_request`/`push` triggers never fire, so the release
+PR sits with stale or missing checks. Fix each time it happens: `gh pr
+close <n> && gh pr reopen <n>` — a human/PAT-authored event, so it does
+trigger the workflows normally. No permanent fix without a PAT in place of
+`GITHUB_TOKEN` for that one workflow, which hasn't been set up here.
+
+Bot-authored PRs (Dependabot, `release-please`'s `github-actions[bot]`)
+are exempted from `pr-body-length.yml` — their bodies are generated
+(a dependency changelog, a release changelog) and were never meant to
+satisfy a human-authored 1000-char rule.
+
 ## Rules
 
 1. **No coordinates in source.** Every place, venue and bounding box comes from
