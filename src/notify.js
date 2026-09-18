@@ -19,12 +19,7 @@ export async function pushIfChanged({ choice, previousChoice, spoken, topic, fet
   if (!topic) return { ok: true, sent: false, error: null };
   if (previousChoice === null || previousChoice === choice) return { ok: true, sent: false, error: null };
   try {
-    const response = await fetchImpl(`${NTFY_URL}/${topic}`, {
-      method: 'POST',
-      headers: { Title: 'switchtender verdict changed' },
-      body: spoken,
-      signal,
-    });
+    const response = await fetchImpl(`${NTFY_URL}/${topic}`, { method: 'POST', headers: { Title: 'switchtender verdict changed' }, body: spoken, signal });
     if (!response.ok) return { ok: false, sent: false, error: `ntfy ${response.status}` };
     return { ok: true, sent: true, error: null };
   } catch (cause) {

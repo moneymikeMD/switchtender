@@ -81,7 +81,10 @@ export class EventsError extends Error {
   }
 }
 
-const cleanName = (name) => String(name ?? '').trim().toLowerCase();
+const cleanName = (name) =>
+  String(name ?? '')
+    .trim()
+    .toLowerCase();
 
 /**
  * Build the venue lookup for one configured venue. No key here: the key is
@@ -91,10 +94,7 @@ export function venuesRequest(venue) {
   if (typeof venue?.name !== 'string' || venue.name.trim() === '') {
     throw new EventsError('events: a venue is missing "name"');
   }
-  return {
-    url: VENUES_ENDPOINT,
-    params: { keyword: venue.name.trim(), size: '20' },
-  };
+  return { url: VENUES_ENDPOINT, params: { keyword: venue.name.trim(), size: '20' } };
 }
 
 /**
@@ -112,12 +112,7 @@ export function eventsRequest(venueIds, { date }) {
   }
   return {
     url: EVENTS_ENDPOINT,
-    params: {
-      venueId: venueIds.join(','),
-      localStartDateTime: `${date}T00:00:00,${date}T23:59:59`,
-      size: '50',
-      sort: 'date,asc',
-    },
+    params: { venueId: venueIds.join(','), localStartDateTime: `${date}T00:00:00,${date}T23:59:59`, size: '50', sort: 'date,asc' },
   };
 }
 
@@ -205,15 +200,7 @@ const UNKNOWN_REASON = 'scheduled events unavailable';
 
 /** The unknown shape: every count null, the reason naming the failure class. */
 export function unknownEvents(reason) {
-  return {
-    count: null,
-    evening: null,
-    weighted: null,
-    unmatched: null,
-    reasons: [`${UNKNOWN_REASON}: ${reason}`],
-    score: null,
-    unknown: true,
-  };
+  return { count: null, evening: null, weighted: null, unmatched: null, reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, unknown: true };
 }
 
 const unknown = unknownEvents;
@@ -289,9 +276,7 @@ function spokenTime(localTime) {
 
 function describe(event, venue) {
   const at = spokenTime(event.localTime);
-  return at
-    ? `${venue.name} ${event.kind} at ${at} this evening`
-    : `${venue.name} ${event.kind} this evening`;
+  return at ? `${venue.name} ${event.kind} at ${at} this evening` : `${venue.name} ${event.kind} this evening`;
 }
 
 /**
@@ -336,19 +321,10 @@ export function assessEvents(events, venues, { now = Date.now(), timeZone, eveni
       reasons.push(describe(event, venue));
     }
   }
-  return {
-    count,
-    evening,
-    weighted,
-    unmatched,
-    reasons,
-    score: Math.min(1, weighted / SCORE_SATURATION_WEIGHT),
-    unknown: false,
-  };
+  return { count, evening, weighted, unmatched, reasons, score: Math.min(1, weighted / SCORE_SATURATION_WEIGHT), unknown: false };
 }
 
-const getTicketed = (request, apiKey, fetchImpl, signal) =>
-  getJson(request, { fetchImpl, query: { apikey: apiKey }, signal });
+const getTicketed = (request, apiKey, fetchImpl, signal) => getJson(request, { fetchImpl, query: { apikey: apiKey }, signal });
 
 const providerOf = (venue) => venue?.provider ?? 'ticketmaster';
 

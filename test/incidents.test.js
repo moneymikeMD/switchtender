@@ -31,9 +31,7 @@ const config = { incidents: bbox };
 
 // The synthetic Boston-area drive from the routes fixture (due north along
 // one meridian); never a real commute.
-const route = decodePolyline(
-  JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8')).driveThrough.polyline.encodedPolyline,
-);
+const route = decodePolyline(JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8')).driveThrough.polyline.encodedPolyline);
 
 // A GeoJSON LineString (lon, lat order) `metresEast` of the route's vertices 2..4.
 function lineEastOf(metresEast) {
@@ -193,8 +191,7 @@ test('a major accident makes the estimate unstable and is spoken as the reason',
 });
 
 test('an accident with unknown magnitude still triggers; a minor one does not', () => {
-  const at = (magnitudeOfDelay) =>
-    assessTrajectory(normaliseIncidents({ incidents: [{ properties: { iconCategory: 1, magnitudeOfDelay } }] }));
+  const at = (magnitudeOfDelay) => assessTrajectory(normaliseIncidents({ incidents: [{ properties: { iconCategory: 1, magnitudeOfDelay } }] }));
   assert.equal(at(0).unstable, true, 'unknown is not minor');
   assert.equal(at(1).unstable, false);
   assert.equal(at(2).unstable, true);
@@ -203,9 +200,7 @@ test('an accident with unknown magnitude still triggers; a minor one does not', 
 
 test('a closure triggers only while fresh', () => {
   const now = Date.parse('2026-09-16T23:45:00Z');
-  const closure = (startTime) => ({
-    incidents: [{ properties: { iconCategory: 8, magnitudeOfDelay: 4, startTime, from: 'A St', to: 'B St' } }],
-  });
+  const closure = (startTime) => ({ incidents: [{ properties: { iconCategory: 8, magnitudeOfDelay: 4, startTime, from: 'A St', to: 'B St' } }] });
   const fresh = new Date(now - FRESH_CLOSURE_MS / 2).toISOString();
   const stale = new Date(now - FRESH_CLOSURE_MS * 2).toISOString();
   assert.equal(assessTrajectory(normaliseIncidents(closure(fresh)), { now }).unstable, true);
@@ -266,7 +261,13 @@ test('a network error, bad JSON, or a missing key never throws and never leaks',
   assert.match(network.reasons[0], /network error/);
   assert.equal(JSON.stringify(network).includes('sekrit'), false);
 
-  const garbage = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } });
+  const garbage = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('x');
+    },
+  });
   assert.equal((await fetchIncidents(config, 'k', garbage)).score, null);
 
   const noList = async () => ({ ok: true, status: 200, json: async () => ({ hello: 1 }) });
@@ -280,7 +281,9 @@ test('a network error, bad JSON, or a missing key never throws and never leaks',
   const noBox = await fetchIncidents({}, 'k', neverCalled);
   assert.equal(noBox.score, null);
 
-  const broken = await fetchIncidents(config, 'k', () => { throw new RangeError('no'); });
+  const broken = await fetchIncidents(config, 'k', () => {
+    throw new RangeError('no');
+  });
   assert.equal(broken.score, null);
   assert.match(broken.reasons[0], /\(RangeError\)/);
 });

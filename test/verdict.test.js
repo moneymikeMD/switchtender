@@ -5,14 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { buildOptions } from '../src/routes.js';
-import {
-  decide,
-  speak,
-  requiredMargin,
-  confidenceBand,
-  CONGESTION_MARGIN_SCALE,
-  arrivalAt,
-} from '../src/verdict.js';
+import { decide, speak, requiredMargin, confidenceBand, CONGESTION_MARGIN_SCALE, arrivalAt } from '../src/verdict.js';
 
 const fixture = JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8'));
 
@@ -20,13 +13,7 @@ const decision = { transit_wins_ties: true, minimum_drive_margin_minutes: 5 };
 
 /** Hand-built options: minutes in, seconds out, congestion score as given. */
 function options(driveMin, transitMin, score) {
-  return {
-    driveThrough: {
-      totalSeconds: driveMin * 60,
-      congestion: { score, unknown: score === null },
-    },
-    parkAndRide: { totalSeconds: transitMin * 60 },
-  };
+  return { driveThrough: { totalSeconds: driveMin * 60, congestion: { score, unknown: score === null } }, parkAndRide: { totalSeconds: transitMin * 60 } };
 }
 
 test('the fixture, 45 driving against 40 park and ride, goes to transit', () => {
@@ -88,9 +75,7 @@ test('unknown congestion uses the floor margin and lowers confidence with a reas
 
 test('a degraded signal lowers confidence without changing the choice', () => {
   const full = decide(options(20, 30, 0), decision, { degraded: [] });
-  const degraded = decide(options(20, 30, 0), decision, {
-    degraded: ['live incidents', 'rail alerts'],
-  });
+  const degraded = decide(options(20, 30, 0), decision, { degraded: ['live incidents', 'rail alerts'] });
   assert.equal(degraded.choice, full.choice);
   assert.equal(degraded.marginMinutes, full.marginMinutes);
   assert.ok(degraded.confidence < full.confidence);
@@ -98,9 +83,7 @@ test('a degraded signal lowers confidence without changing the choice', () => {
   assert.ok(degraded.reasons.some((r) => r.includes('rail alerts')));
 
   // Even a badly degraded transit-side picture cannot flip a transit verdict.
-  const transit = decide(options(30, 30, 0), decision, {
-    degraded: ['live incidents', 'scheduled events', 'rail alerts'],
-  });
+  const transit = decide(options(30, 30, 0), decision, { degraded: ['live incidents', 'scheduled events', 'rail alerts'] });
   assert.equal(transit.choice, 'transit');
 });
 
@@ -113,9 +96,7 @@ test('a close call lowers confidence', () => {
 });
 
 test('confidence never reaches zero', () => {
-  const verdict = decide(options(29, 30, null), decision, {
-    degraded: Array(12).fill('a signal'),
-  });
+  const verdict = decide(options(29, 30, null), decision, { degraded: Array(12).fill('a signal') });
   assert.ok(verdict.confidence > 0);
 });
 
@@ -255,7 +236,14 @@ const gameTonight = { count: 2, evening: 1, weighted: 1, reasons: ['Nationals Pa
 const noEvents = { count: null, evening: null, weighted: null, reasons: ['scheduled events unavailable: HTTP 500'], score: null, unknown: true };
 const noTrackwork = { active: 0, upcoming: 1, staleWindows: 0, reasons: [], score: null, unknown: false };
 const singleTracking = { active: 1, upcoming: 1, staleWindows: 1, reasons: ['planned track work on the Red Line through Sunday'], score: null, unknown: false };
-const noSchedule = { active: null, upcoming: null, staleWindows: null, reasons: ['track work schedule unavailable: no readable schedule table'], score: null, unknown: true };
+const noSchedule = {
+  active: null,
+  upcoming: null,
+  staleWindows: null,
+  reasons: ['track work schedule unavailable: no readable schedule table'],
+  score: null,
+  unknown: true,
+};
 
 test('quiet events and no active track work cost nothing and record zeros', () => {
   const clean = decide(options(30, 60, 0), decision);
@@ -289,12 +277,7 @@ test('unknown events or schedule cost a little, are spoken, and leave counts nul
 });
 
 test('speak says at most three reason clauses and keeps the rest for the log', () => {
-  const v = decide(options(30, 60, 0), decision, {
-    incidents: unstableBox,
-    closures: someClosures,
-    maryland: busyMaryland,
-    events: gameTonight,
-  });
+  const v = decide(options(30, 60, 0), decision, { incidents: unstableBox, closures: someClosures, maryland: busyMaryland, events: gameTonight });
   assert.ok(v.reasons.length > 3);
   const line = speak(v);
   assert.ok(line.toLowerCase().includes(v.reasons[0].toLowerCase()));
@@ -305,12 +288,7 @@ test('speak says at most three reason clauses and keeps the rest for the log', (
 test('findings are spoken before caveats, so a crash ahead beats "no X data" and a close call for the three slots', () => {
   // A close call (margin 6.5 against 5 needed), a failed events feed and a
   // crash: the crash must be heard.
-  const v = decide(options(23.5, 30, 0), decision, {
-    degraded: ['rail alerts'],
-    incidents: unstableBox,
-    events: noEvents,
-    trackwork: singleTracking,
-  });
+  const v = decide(options(23.5, 30, 0), decision, { degraded: ['rail alerts'], incidents: unstableBox, events: noEvents, trackwork: singleTracking });
   assert.ok(v.reasons.some((r) => r === 'it is a close call'));
   const line = speak(v);
   assert.ok(line.includes('the drive estimate is unstable: accident on Example Pkwy'), line);

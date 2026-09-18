@@ -36,12 +36,7 @@ export const ROUTE_TIMEOUT_MS = 12_000;
 // score and decides what it is worth.
 const SPEED_WEIGHT = { NORMAL: 0, SLOW: 0.5, TRAFFIC_JAM: 1 };
 
-const DRIVE_FIELDS = [
-  'routes.duration',
-  'routes.distanceMeters',
-  'routes.polyline.encodedPolyline',
-  'routes.travelAdvisory.speedReadingIntervals',
-].join(',');
+const DRIVE_FIELDS = ['routes.duration', 'routes.distanceMeters', 'routes.polyline.encodedPolyline', 'routes.travelAdvisory.speedReadingIntervals'].join(',');
 
 const TRANSIT_FIELDS = ['routes.duration', 'routes.distanceMeters'].join(',');
 
@@ -117,11 +112,7 @@ async function computeRoute(body, fieldMask, { apiKey, fetchImpl = fetch, timeou
   try {
     response = await fetchImpl(ENDPOINT, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': fieldMask,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': fieldMask },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -211,9 +202,7 @@ export function buildOptions({ driveThrough, driveToParkAndRide, transit }, walk
       congestion: summariseCongestion(driveThrough),
       // Decoded geometry of the onward drive, for feeds that match incidents
       // to the route spatially (CMB-16). Null when the API sent no polyline.
-      points: driveThrough.polyline?.encodedPolyline
-        ? decodePolyline(driveThrough.polyline.encodedPolyline)
-        : null,
+      points: driveThrough.polyline?.encodedPolyline ? decodePolyline(driveThrough.polyline.encodedPolyline) : null,
     },
     parkAndRide: {
       totalSeconds: startSeconds + driveSeconds + bufferSeconds + transitSeconds + transitEndSeconds,
@@ -238,12 +227,7 @@ export function buildOptions({ driveThrough, driveToParkAndRide, transit }, walk
  * @param options.now   Date the driver sets off; the transit leg departs
  *                      this plus the drive to the lot plus the buffer.
  */
-export async function computeOptions(
-  config,
-  apiKey,
-  fetchImpl = fetch,
-  { from = 'fork', now = new Date() } = {},
-) {
+export async function computeOptions(config, apiKey, fetchImpl = fetch, { from = 'fork', now = new Date() } = {}) {
   if (!START_POINTS.includes(from)) {
     throw new RouteError(`routes: unknown start point ${JSON.stringify(from)}`);
   }
@@ -252,7 +236,7 @@ export async function computeOptions(
   // With a separate parking spot the car stops there, not at the door.
   const driveTarget = parking ?? destination;
   const walks = {
-    start: from === 'origin' ? origin.addl_walk_mins ?? 0 : 0,
+    start: from === 'origin' ? (origin.addl_walk_mins ?? 0) : 0,
     driveEnd: driveTarget.addl_walk_mins ?? 0,
     platform: pnr.addl_walk_mins ?? 0,
     transitEnd: destination.addl_walk_mins ?? 0,
@@ -262,15 +246,8 @@ export async function computeOptions(
     computeRoute(driveRequest(start, driveTarget), DRIVE_FIELDS, { apiKey, fetchImpl }),
     computeRoute(driveRequest(start, pnr), DRIVE_FIELDS, { apiKey, fetchImpl }),
   ]);
-  const platformAt = new Date(
-    now.getTime() +
-      (walks.start * 60 + parseDuration(driveToParkAndRide.duration) + walks.platform * 60) * 1000,
-  );
-  const transit = await computeRoute(
-    transitRequest(pnr, destination, { departureTime: platformAt.toISOString() }),
-    TRANSIT_FIELDS,
-    { apiKey, fetchImpl },
-  );
+  const platformAt = new Date(now.getTime() + (walks.start * 60 + parseDuration(driveToParkAndRide.duration) + walks.platform * 60) * 1000);
+  const transit = await computeRoute(transitRequest(pnr, destination, { departureTime: platformAt.toISOString() }), TRANSIT_FIELDS, { apiKey, fetchImpl });
 
   const options = buildOptions({ driveThrough, driveToParkAndRide, transit }, walks);
   options.measuredFrom = from;

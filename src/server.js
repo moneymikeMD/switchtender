@@ -60,11 +60,7 @@ export function keyMatches(presented, secret) {
 
 function send(res, status, body, contentType = 'application/json') {
   const payload = body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body);
-  res.writeHead(status, {
-    'Content-Type': contentType,
-    'Content-Length': Buffer.byteLength(payload),
-    'Cache-Control': 'no-store',
-  });
+  res.writeHead(status, { 'Content-Type': contentType, 'Content-Length': Buffer.byteLength(payload), 'Cache-Control': 'no-store' });
   res.end(payload);
 }
 
@@ -168,10 +164,7 @@ export function createServer({
     const computedAt = now();
     try {
       const [{ verdict, spoken, logged = null }, prior] = await withTimeout(
-        Promise.all([
-          run(config, { now: computedAt, from }),
-          notify ? previousChoice(config, fetchImpl) : Promise.resolve(null),
-        ]),
+        Promise.all([run(config, { now: computedAt, from }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
         timeoutMs,
       );
       // A failed sheet write is the one failure nobody would otherwise see
@@ -182,13 +175,7 @@ export function createServer({
       if (notify) {
         if (prior && !prior.ok) logger(`notify: previous choice unavailable (${prior.error})`);
         const topic = (process.env[NTFY_TOPIC_ENV] ?? '').trim();
-        notified = await push({
-          choice: verdict.choice,
-          previousChoice: prior?.choice ?? null,
-          spoken,
-          topic,
-          fetchImpl,
-        });
+        notified = await push({ choice: verdict.choice, previousChoice: prior?.choice ?? null, spoken, topic, fetchImpl });
         if (!notified.ok) logger(`notify failed: ${notified.error}`);
       }
 

@@ -162,8 +162,7 @@ export function linesIn(cellHtml) {
 
 // A date token: optional weekday, month name, day, optional year.
 //   "Sept. 19"  "Sat., Sept. 19"  "September 19, 2026"  "Oct 3"
-const DATE_RE =
-  /(?:(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s*)?([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
+const DATE_RE = /(?:(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s*)?([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
 
 /**
  * Every month/day (and explicit year) mentioned in a cell, in order. A bare
@@ -224,13 +223,7 @@ export function zonedMidnight(year, month, day, timeZone = DEFAULT_TIME_ZONE) {
 }
 
 function calendarOf(ms, timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'long',
-  }).formatToParts(new Date(ms));
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'long' }).formatToParts(new Date(ms));
   const get = (type) => parts.find((p) => p.type === type)?.value;
   return { year: Number(get('year')), month: Number(get('month')) - 1, day: Number(get('day')), weekday: get('weekday') };
 }
@@ -324,11 +317,7 @@ export function parseTrackwork(html, { now = Date.now(), timeZone = DEFAULT_TIME
       if (!span) return null;
       const impact = cols.impact >= 0 && c[cols.impact] ? textOf(c[cols.impact]) : '';
       const work = cols.work >= 0 && c[cols.work] ? textOf(c[cols.work]) : '';
-      windows.push({
-        lines,
-        ...span,
-        description: [impact, work].filter(Boolean).join(' - ') || 'planned track work',
-      });
+      windows.push({ lines, ...span, description: [impact, work].filter(Boolean).join(' - ') || 'planned track work' });
     }
     return windows;
   }
@@ -377,9 +366,7 @@ function describe(window, lines, nowMs, timeZone) {
   }
   const from = spokenDay(window.startsAt, nowMs, timeZone);
   const through = spokenDay(window.endsAt, nowMs, timeZone);
-  return from === through
-    ? `planned track work on ${who} ${from}`
-    : `planned track work on ${who} from ${from} through ${through}`;
+  return from === through ? `planned track work on ${who} ${from}` : `planned track work on ${who} from ${from} through ${through}`;
 }
 
 /** The unknown shape: every count null, the reason naming the failure class. */
@@ -450,11 +437,7 @@ export function sourceIsStale(windows, now = Date.now()) {
  * no rows (active 0). Windows whose year was inferred as not the current
  * one are reported through the optional `log` callback, one line each.
  */
-export async function fetchTrackwork(
-  lines,
-  fetchImpl = fetch,
-  { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null, signal } = {},
-) {
+export async function fetchTrackwork(lines, fetchImpl = fetch, { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null, signal } = {}) {
   try {
     const { text: html, error } = await getText(TRACKWORK_URL, { fetchImpl, signal });
     if (error) return unknown(error);

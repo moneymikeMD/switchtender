@@ -79,15 +79,11 @@ async function main() {
       : `  driving to    ${route.destination.label}`,
   );
   console.log(`  or parking at ${route.park_and_ride.label}`);
-  console.log(
-    `  transit wins ties: ${decision.transit_wins_ties}, drive must win by ${decision.minimum_drive_margin_minutes} min`,
-  );
+  console.log(`  transit wins ties: ${decision.transit_wins_ties}, drive must win by ${decision.minimum_drive_margin_minutes} min`);
   console.log(`  venues watched: ${venues.length}`);
 
   if (secrets.degraded.length > 0) {
-    console.log(
-      `  degraded, no key set: ${secrets.degraded.join(', ')} (confidence will be lower)`,
-    );
+    console.log(`  degraded, no key set: ${secrets.degraded.join(', ')} (confidence will be lower)`);
   }
 
   let result;
@@ -108,9 +104,7 @@ async function main() {
   const { driveThrough, parkAndRide } = options;
   console.log(`\nFrom ${options.startLabel ?? route.decision_point.label}:`);
   const walk = driveThrough.walkSeconds > 0 ? `${minutes(driveThrough.driveSeconds)} drive + ${minutes(driveThrough.walkSeconds)} walk, ` : '';
-  console.log(
-    `  keep driving   ${minutes(driveThrough.totalSeconds).padEnd(8)} ${walk}${describeCongestion(driveThrough.congestion)}`,
-  );
+  console.log(`  keep driving   ${minutes(driveThrough.totalSeconds).padEnd(8)} ${walk}${describeCongestion(driveThrough.congestion)}`);
   const parkWalk = parkAndRide.walkSeconds > 0 ? ` + ${minutes(parkAndRide.walkSeconds)} walk` : '';
   console.log(
     `  park and ride  ${minutes(parkAndRide.totalSeconds).padEnd(8)} ${minutes(parkAndRide.driveSeconds)} drive + ${minutes(parkAndRide.bufferSeconds)} to platform + ${minutes(parkAndRide.transitSeconds)} transit${parkWalk}`,
@@ -131,16 +125,10 @@ async function main() {
       : `  planned closures ${closures.active} on route of ${closures.total} in box`,
   );
   console.log(
-    maryland.onRoute === null
-      ? `  maryland records unknown (${maryland.reasons[0]})`
-      : `  maryland records ${maryland.onRoute} on route of ${maryland.total}`,
+    maryland.onRoute === null ? `  maryland records unknown (${maryland.reasons[0]})` : `  maryland records ${maryland.onRoute} on route of ${maryland.total}`,
   );
   if (events) {
-    console.log(
-      events.unknown
-        ? `  venue events unknown (${events.reasons[0]})`
-        : `  venue events ${events.evening} this evening of ${events.count} today`,
-    );
+    console.log(events.unknown ? `  venue events unknown (${events.reasons[0]})` : `  venue events ${events.evening} this evening of ${events.count} today`);
   }
   if (trackwork) {
     console.log(
@@ -161,11 +149,7 @@ async function main() {
   // but it is still not echoed in full.
   if (logged) {
     const tail = config.log.sheet_id.slice(-4);
-    console.error(
-      logged.ok
-        ? `logged to sheet ...${tail} tab ${config.log.sheet_tab}`
-        : `log failed: ${logged.error}`,
-    );
+    console.error(logged.ok ? `logged to sheet ...${tail} tab ${config.log.sheet_tab}` : `log failed: ${logged.error}`);
   }
 
   // Last line of stdout, always: the sentence the driver hears.

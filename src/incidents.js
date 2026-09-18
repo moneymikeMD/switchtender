@@ -150,8 +150,7 @@ const clampSeverity = (value) => {
 // TomTom geometry is GeoJSON: coordinates are [lon, lat]. Kept as [lat, lon]
 // pairs to match the decoded route polyline. Null when absent or malformed.
 function pointsOf(geometry) {
-  const pair = (c) =>
-    Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]) ? [c[1], c[0]] : null;
+  const pair = (c) => (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]) ? [c[1], c[0]] : null);
   if (geometry?.type === 'Point') {
     const p = pair(geometry.coordinates);
     return p ? [p] : null;
@@ -167,9 +166,7 @@ function normaliseOne(raw) {
   const p = raw?.properties ?? {};
   const events = Array.isArray(p.events) ? p.events : [];
   const iconCategory = p.iconCategory ?? events[0]?.iconCategory;
-  const descriptions = events
-    .map((e) => e?.description)
-    .filter((d) => typeof d === 'string' && d.length > 0);
+  const descriptions = events.map((e) => e?.description).filter((d) => typeof d === 'string' && d.length > 0);
   const delay = Number(p.delay);
   return {
     category: ICON_CATEGORY[iconCategory] ?? 'other',
@@ -200,15 +197,7 @@ const UNKNOWN_REASON = 'live incidents unavailable';
 
 /** The unknown shape. unstable is null, not false: a failed lookup is not a steady road (rule 4). */
 export function unknownIncidents(reason) {
-  return {
-    unstable: null,
-    score: null,
-    count: null,
-    onRoute: null,
-    routeMatched: false,
-    byCategory: {},
-    reasons: [`${UNKNOWN_REASON}: ${reason}`],
-  };
+  return { unstable: null, score: null, count: null, onRoute: null, routeMatched: false, byCategory: {}, reasons: [`${UNKNOWN_REASON}: ${reason}`] };
 }
 
 const unknown = unknownIncidents;
@@ -237,15 +226,8 @@ function triggers(incident, now) {
 }
 
 function describe(incident) {
-  const where = incident.from
-    ? incident.to
-      ? `${incident.from} to ${incident.to}`
-      : incident.from
-    : incident.road ?? 'an unnamed road';
-  const delay =
-    incident.delaySeconds != null && incident.delaySeconds > 0
-      ? `, ${Math.round(incident.delaySeconds / 60)} minutes of delay`
-      : '';
+  const where = incident.from ? (incident.to ? `${incident.from} to ${incident.to}` : incident.from) : (incident.road ?? 'an unnamed road');
+  const delay = incident.delaySeconds != null && incident.delaySeconds > 0 ? `, ${Math.round(incident.delaySeconds / 60)} minutes of delay` : '';
   return `${incident.category} on ${where}${delay}`;
 }
 
@@ -266,10 +248,7 @@ function describe(incident) {
  * `points` is the decoded drive polyline ([lat, lon] pairs); without it every
  * triggering incident in the box counts, which overstates a District-wide box.
  */
-export function assessTrajectory(
-  incidents,
-  { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {},
-) {
+export function assessTrajectory(incidents, { now = Date.now(), points = null, radiusMetres = DEFAULT_RADIUS_METRES } = {}) {
   if (!Array.isArray(incidents)) return unknown('no data');
   const haveRoute = Array.isArray(points) && points.length > 0;
 

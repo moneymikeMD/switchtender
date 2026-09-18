@@ -33,24 +33,12 @@ const options = {
   driveThrough: {
     totalSeconds: 2100,
     distanceMeters: 24000,
-    congestion: {
-      score: 0.25,
-      metres: { NORMAL: 18000, SLOW: 4000, TRAFFIC_JAM: 2000 },
-      share: {},
-      totalMetres: 24000,
-      unknown: false,
-    },
+    congestion: { score: 0.25, metres: { NORMAL: 18000, SLOW: 4000, TRAFFIC_JAM: 2000 }, share: {}, totalMetres: 24000, unknown: false },
   },
   parkAndRide: { totalSeconds: 2700, driveSeconds: 600, bufferSeconds: 300, transitSeconds: 1800 },
 };
 
-const incidents = {
-  unstable: true,
-  score: 0.4,
-  count: 7,
-  byCategory: { accident: 1, jam: 6 },
-  reasons: ['a crash on the parkway'],
-};
+const incidents = { unstable: true, score: 0.4, count: 7, byCategory: { accident: 1, jam: 6 }, reasons: ['a crash on the parkway'] };
 
 const verdict = {
   choice: 'transit',
@@ -69,12 +57,7 @@ const now = new Date('2026-09-16T12:34:56Z'); // 08:34:56 EDT, a Wednesday
 
 const col = (row, name, header = FULL_HEADER) => row[header.indexOf(name)];
 
-const jsonResponse = (status, body = {}) => ({
-  ok: status >= 200 && status < 300,
-  status,
-  statusText: String(status),
-  json: async () => body,
-});
+const jsonResponse = (status, body = {}) => ({ ok: status >= 200 && status < 300, status, statusText: String(status), json: async () => body });
 
 test('HEADER and EXTRA_COLUMNS have no duplicate columns, and FULL_HEADER is the two in order', () => {
   assert.equal(new Set(FULL_HEADER).size, FULL_HEADER.length);
@@ -82,7 +65,12 @@ test('HEADER and EXTRA_COLUMNS have no duplicate columns, and FULL_HEADER is the
   assert.deepEqual(FULL_HEADER, [...HEADER, ...EXTRA_COLUMNS]);
   // The live tab's first row was written with these six extras, in this order.
   assert.deepEqual(EXTRA_COLUMNS.slice(0, 6), [
-    'closures_active', 'closures_source_live', 'closures_addresses', 'maryland_on_route', 'maryland_total', 'maryland_descriptions',
+    'closures_active',
+    'closures_source_live',
+    'closures_addresses',
+    'maryland_on_route',
+    'maryland_total',
+    'maryland_descriptions',
   ]);
 });
 
@@ -143,13 +131,7 @@ test('an unknown incident lookup leaves incidents_unstable and road_unstable emp
 });
 
 test('unknown congestion produces empty cells, not zeros', () => {
-  const unknown = {
-    ...options,
-    driveThrough: {
-      ...options.driveThrough,
-      congestion: { score: null, metres: {}, share: {}, totalMetres: 0, unknown: true },
-    },
-  };
+  const unknown = { ...options, driveThrough: { ...options.driveThrough, congestion: { score: null, metres: {}, share: {}, totalMetres: 0, unknown: true } } };
   const row = buildRow({ now, config, options: unknown, incidents: null, verdict: { ...verdict, congestionScore: null } });
   for (const name of [
     'congestion_score',
@@ -291,11 +273,16 @@ test('ensureHeader extends a header that is a prefix of the columns (the live ta
 
   // A tab name with an apostrophe is doubled in the body range as in the URL.
   const quoted = [];
-  await ensureHeader({ sheetId: 'S', tab: "Mike's", token: 't', fetchImpl: async (url, init) => {
-    if (init.method === 'GET') return jsonResponse(200, {});
-    quoted.push(JSON.parse(init.body).range);
-    return jsonResponse(200, {});
-  } });
+  await ensureHeader({
+    sheetId: 'S',
+    tab: "Mike's",
+    token: 't',
+    fetchImpl: async (url, init) => {
+      if (init.method === 'GET') return jsonResponse(200, {});
+      quoted.push(JSON.parse(init.body).range);
+      return jsonResponse(200, {});
+    },
+  });
   assert.deepEqual(quoted, ["'Mike''s'!A1"]);
 });
 
@@ -309,23 +296,21 @@ test('ensureHeader creates the tab when the range cannot be parsed', async () =>
   const result = await ensureHeader({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl });
   assert.equal(result.ok, true);
   assert.equal(result.created, true);
-  assert.ok(seen.some((s) => s.startsWith('POST :batchUpdate')), seen.join('\n'));
-  assert.ok(seen.some((s) => s.startsWith("PUT /values/'verdicts'!A1")), seen.join('\n'));
+  assert.ok(
+    seen.some((s) => s.startsWith('POST :batchUpdate')),
+    seen.join('\n'),
+  );
+  assert.ok(
+    seen.some((s) => s.startsWith("PUT /values/'verdicts'!A1")),
+    seen.join('\n'),
+  );
 });
 
 test('logVerdict with no credentials is ok:false and does not throw', async () => {
   const fetchImpl = async () => {
     throw new Error('network must not be touched');
   };
-  const result = await logVerdict({
-    now,
-    config,
-    options,
-    incidents,
-    verdict,
-    tokenProvider: async () => null,
-    fetchImpl,
-  });
+  const result = await logVerdict({ now, config, options, incidents, verdict, tokenProvider: async () => null, fetchImpl });
   assert.deepEqual(result, { ok: false, error: 'no credentials' });
 });
 
@@ -383,7 +368,10 @@ test('logVerdict hands the injected fetch to the token provider, so the default 
   assert.deepEqual(result, { ok: true, error: null });
   assert.ok(urls[0].includes('metadata.google.internal'));
   let seen;
-  const provider = async (args) => { seen = args; return 'tok'; };
+  const provider = async (args) => {
+    seen = args;
+    return 'tok';
+  };
   const signal = AbortSignal.timeout(10_000);
   await logVerdict({ now, config, options, incidents, verdict, tokenProvider: provider, fetchImpl, signal });
   assert.equal(seen.fetchImpl, fetchImpl);
@@ -392,7 +380,9 @@ test('logVerdict hands the injected fetch to the token provider, so the default 
 
 test('an aborted sheet call is reported by name', async () => {
   const signal = AbortSignal.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
-  const fetchImpl = async (url, init) => { throw init.signal.reason; };
+  const fetchImpl = async (url, init) => {
+    throw init.signal.reason;
+  };
   const result = await appendRow(['a'], { sheetId: 'S', tab: 't', token: 'tok', fetchImpl, signal });
   assert.equal(result.ok, false);
   assert.match(result.error, /TimeoutError/);

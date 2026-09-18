@@ -48,10 +48,8 @@
 import { getJson } from './http.js';
 import { nearPolyline } from './polyline.js';
 
-export const CHART_EVENTS_URL =
-  'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getEventMapDataJSON.do';
-export const CHART_CLOSURES_URL =
-  'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getActiveClosureMapDataJSON.do';
+export const CHART_EVENTS_URL = 'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getEventMapDataJSON.do';
+export const CHART_CLOSURES_URL = 'https://chartexp1.sha.maryland.gov/CHARTExportClientService/getActiveClosureMapDataJSON.do';
 
 // How close an incident must be to a polyline point to count as "on the
 // route". A tuning guess, not a measured value. The polyline at HIGH_QUALITY
@@ -73,14 +71,7 @@ export const STALE_REASON = 'maryland records source stale';
 
 /** The unknown shape: every count null, the reason naming the failure class. */
 export function unknownChart(reason) {
-  return {
-    onRoute: null,
-    total: null,
-    descriptions: [],
-    reasons: [`${UNKNOWN_REASON}: ${reason}`],
-    score: null,
-    sourceLive: null,
-  };
+  return { onRoute: null, total: null, descriptions: [], reasons: [`${UNKNOWN_REASON}: ${reason}`], score: null, sourceLive: null };
 }
 
 const unknown = unknownChart;
@@ -201,11 +192,7 @@ function describe(incident) {
  *               a CHART record on the route predicts a slower drive. Until it
  *               does, a number here would be a guess dressed as a measurement.
  */
-export function assessChart(
-  incidents,
-  points,
-  { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, sourceLive = null } = {},
-) {
+export function assessChart(incidents, points, { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, sourceLive = null } = {}) {
   if (!Array.isArray(incidents)) return unknown('no data');
   if (!Array.isArray(points) || points.length === 0) return unknown('no route polyline');
 
@@ -216,14 +203,7 @@ export function assessChart(
     const noun = hits.length === 1 ? 'record' : 'records';
     reasons.push(`${hits.length} maryland ${noun} on the route: ${descriptions.join('; ')}`);
   }
-  return {
-    onRoute: hits.length,
-    total: incidents.length,
-    descriptions,
-    reasons,
-    score: null,
-    sourceLive,
-  };
+  return { onRoute: hits.length, total: incidents.length, descriptions, reasons, score: null, sourceLive };
 }
 
 async function fetchOne(url, kind, fetchImpl, signal) {
@@ -248,10 +228,7 @@ async function fetchOne(url, kind, fetchImpl, signal) {
  */
 export async function loadChart(fetchImpl = fetch, { now = Date.now(), signal } = {}) {
   try {
-    const results = await Promise.all([
-      fetchOne(CHART_EVENTS_URL, 'incident', fetchImpl, signal),
-      fetchOne(CHART_CLOSURES_URL, 'closure', fetchImpl, signal),
-    ]);
+    const results = await Promise.all([fetchOne(CHART_EVENTS_URL, 'incident', fetchImpl, signal), fetchOne(CHART_CLOSURES_URL, 'closure', fetchImpl, signal)]);
     const failed = results.find((r) => r.error);
     if (failed) return { failure: unknown(failed.error) };
     const records = results.flatMap((r) => r.records);
@@ -269,11 +246,7 @@ export async function loadChart(fetchImpl = fetch, { now = Date.now(), signal } 
  * ([[lat, lon], ...], from decodePolyline): loadChart then assessChart.
  * Never throws.
  */
-export async function fetchChart(
-  points,
-  fetchImpl = fetch,
-  { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, signal } = {},
-) {
+export async function fetchChart(points, fetchImpl = fetch, { now = Date.now(), radiusMetres = DEFAULT_RADIUS_METRES, signal } = {}) {
   if (!Array.isArray(points) || points.length === 0) return unknown('no route polyline');
   const loaded = await loadChart(fetchImpl, { now, signal });
   if (loaded.failure) return loaded.failure;

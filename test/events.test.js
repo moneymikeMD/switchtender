@@ -22,14 +22,7 @@ import {
   VENUE_MATCH_METRES,
   EventsError,
 } from '../src/events.js';
-import {
-  scheduleRequest,
-  normaliseGames,
-  fetchMlbGames,
-  nickname,
-  SCHEDULE_ENDPOINT,
-  MlbError,
-} from '../src/mlb.js';
+import { scheduleRequest, normaliseGames, fetchMlbGames, nickname, SCHEDULE_ENDPOINT, MlbError } from '../src/mlb.js';
 
 // Recorded live 2026-09-16: the Nationals' schedule for the 16th to the 23rd,
 // trimmed to the fields the module reads. Seven games: one at home on the 16th
@@ -58,11 +51,7 @@ const noon16 = Date.parse('2026-09-16T12:00:00-04:00');
 const clock = { now: noon16, timeZone: TZ, eveningDeparture: '17:30' };
 
 // Config shape as parseConfig produces it, minus everything this module ignores.
-const config = {
-  route: { timezone: TZ },
-  decision: { assumed_evening_departure: '17:30' },
-  venues: dcVenues,
-};
+const config = { route: { timezone: TZ }, decision: { assumed_evening_departure: '17:30' }, venues: dcVenues };
 
 test('the venue lookup is built from the configured name, not a literal', () => {
   const { url, params } = venuesRequest({ name: '  Fenway Park ', lat: 42.3467, lon: -71.0972, weight: 1 });
@@ -157,7 +146,10 @@ test('an empty events page is [], and an unrecognised shape is null, never 0', (
 });
 
 test('events match back to configured venues by name, case-insensitive and trimmed', () => {
-  const venues = [{ name: '  the anthem ', weight: 1 }, { name: 'ARENA STAGE', weight: 1 }];
+  const venues = [
+    { name: '  the anthem ', weight: 1 },
+    { name: 'ARENA STAGE', weight: 1 },
+  ];
   assert.equal(venueFor({ venue: 'The Anthem', venueId: null }, venues), venues[0]);
   assert.equal(venueFor({ venue: 'Arena Stage at the Mead Center', venueId: null }, venues), venues[1]);
   // A vendor name that merely begins with the letters is not a match.
@@ -245,11 +237,7 @@ test('weights sum across evening events and the score saturates', () => {
     'Audi Field game at 6:00 this evening',
     'Arena Stage game at 8:00 this evening',
   ]);
-  const saturated = assessEvents(
-    [at('Nationals Park', '19:05:00'), at('The Anthem', '19:00:00'), at('Audi Field', '19:00:00')],
-    dcVenues,
-    clock,
-  );
+  const saturated = assessEvents([at('Nationals Park', '19:05:00'), at('The Anthem', '19:00:00'), at('Audi Field', '19:00:00')], dcVenues, clock);
   assert.equal(saturated.weighted, 2.5);
   assert.equal(saturated.score, 1);
 });
@@ -386,7 +374,17 @@ test('fetchEvents never throws, whatever it is handed', async () => {
     [{ ...config, venues: [{ lat: 1, lon: 2, weight: 1 }] }, 'k', stubFetch()],
     [{ ...config, venues: [] }, 'k', stubFetch()],
     [config, 'k', async () => ({ ok: true, status: 200, json: async () => 'html' })],
-    [config, 'k', async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad json'); } })],
+    [
+      config,
+      'k',
+      async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError('bad json');
+        },
+      }),
+    ],
   ];
   for (const [cfg, key, fetchImpl] of cases) {
     const result = await fetchEvents(cfg, key, fetchImpl, { now: noon16 });
@@ -460,10 +458,7 @@ test('a 7:05 pm Eastern game stored in UTC comes back on the right local date an
             gameDate: '2026-09-25T23:05:00Z',
             officialDate: '2026-09-25',
             status: { detailedState: 'Scheduled', startTimeTBD: false },
-            teams: {
-              away: { team: { id: 121, name: 'New York Mets' } },
-              home: { team: { id: 120, name: 'Washington Nationals' } },
-            },
+            teams: { away: { team: { id: 121, name: 'New York Mets' } }, home: { team: { id: 120, name: 'Washington Nationals' } } },
             venue: { id: 3309, name: 'Nationals Park' },
           },
         ],
@@ -561,8 +556,24 @@ test('fetchMlbGames never throws: a 500, a thrown fetch, bad JSON and a bad venu
   const venue = mixedVenues.find((v) => v.provider === 'mlb');
   const cases = [
     [venue, twoSourceFetch({ mlbStatus: 500 }), /HTTP 500/],
-    [venue, async (url) => { throw new TypeError(`fetch failed: ${url}`); }, /network error \(TypeError\)/],
-    [venue, async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } }), /unparseable/],
+    [
+      venue,
+      async (url) => {
+        throw new TypeError(`fetch failed: ${url}`);
+      },
+      /network error \(TypeError\)/,
+    ],
+    [
+      venue,
+      async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError('x');
+        },
+      }),
+      /unparseable/,
+    ],
     [venue, async () => ({ ok: true, status: 200, json: async () => ({ message: 'nope' }) }), /no schedule/],
     [{ ...venue, mlb_team_id: null }, twoSourceFetch(), /team id/],
   ];
@@ -585,10 +596,7 @@ test('a mixed venue list merges both sources into one evening signal', async () 
   assert.equal(result.evening, 2);
   assert.equal(result.weighted, 2.0);
   assert.equal(result.score, 1);
-  assert.deepEqual(result.reasons, [
-    'The Anthem game at 7:30 this evening',
-    'Nationals Park game at 6:45 this evening',
-  ]);
+  assert.deepEqual(result.reasons, ['The Anthem game at 7:30 this evening', 'Nationals Park game at 6:45 this evening']);
   assert.deepEqual(result.resolved, ['Audi Field', 'The Anthem', 'Arena Stage', 'Nationals Park']);
   assert.deepEqual(result.unresolved, []);
   assert.deepEqual(result.notes, []);
@@ -596,7 +604,10 @@ test('a mixed venue list merges both sources into one evening signal', async () 
   // The ballpark is never asked of Ticketmaster: it replaces, not adds.
   assert.equal(fetchImpl.tmCalls().length, 4);
   assert.equal(fetchImpl.mlbCalls().length, 1);
-  const keywords = fetchImpl.tmCalls().map((c) => c.url.searchParams.get('keyword')).filter(Boolean);
+  const keywords = fetchImpl
+    .tmCalls()
+    .map((c) => c.url.searchParams.get('keyword'))
+    .filter(Boolean);
   assert.equal(keywords.includes('Nationals Park'), false);
   for (const c of fetchImpl.mlbCalls()) assert.equal(c.url.searchParams.has('apikey'), false);
   assert.equal(JSON.stringify(result).includes('secret-key'), false);
@@ -681,9 +692,24 @@ test('the deadline rides along on every request, and a fetch that throws synchro
   const inits = [];
   const signal = AbortSignal.timeout(10_000);
   const inner = twoSourceFetch();
-  await fetchEvents(mixedConfig, 'k', async (url, init) => { inits.push(init); return inner(url, init); }, { now: noon16, signal });
+  await fetchEvents(
+    mixedConfig,
+    'k',
+    async (url, init) => {
+      inits.push(init);
+      return inner(url, init);
+    },
+    { now: noon16, signal },
+  );
   assert.equal(inits.length, 5);
   assert.ok(inits.every((i) => i.signal === signal));
-  const broken = await fetchEvents(mixedConfig, 'k', () => { throw new RangeError('no'); }, { now: noon16 });
+  const broken = await fetchEvents(
+    mixedConfig,
+    'k',
+    () => {
+      throw new RangeError('no');
+    },
+    { now: noon16 },
+  );
   assert.equal(broken.unknown, true);
 });

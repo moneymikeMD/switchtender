@@ -9,20 +9,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  parseConfig,
-  loadSecrets,
-  loadConfig,
-  ConfigError,
-  SECRETS,
-  VENUE_PROVIDERS,
-} from '../src/config.js';
+import { parseConfig, loadSecrets, loadConfig, ConfigError, SECRETS, VENUE_PROVIDERS } from '../src/config.js';
 
 const EXAMPLE = 'config.example.toml';
 const exampleText = readFileSync(EXAMPLE, 'utf8');
-const allKeys = Object.fromEntries(
-  Object.keys(SECRETS).map((k) => [k, 'test-value']),
-);
+const allKeys = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, 'test-value']));
 
 test('the committed example parses', () => {
   const c = parseConfig(exampleText);

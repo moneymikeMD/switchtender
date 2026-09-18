@@ -105,16 +105,11 @@ export function decide(options, decision, context = {}) {
 
   // Positive means driving is faster.
   const marginMinutes = transitMinutes - driveMinutes;
-  const requiredMarginMinutes = requiredMargin(
-    decision.minimum_drive_margin_minutes,
-    congestionScore,
-  );
+  const requiredMarginMinutes = requiredMargin(decision.minimum_drive_margin_minutes, congestionScore);
 
   // The choice depends on time and congestion only. Nothing below this line
   // may change it.
-  const beatsMargin = decision.transit_wins_ties
-    ? marginMinutes > requiredMarginMinutes
-    : marginMinutes >= requiredMarginMinutes;
+  const beatsMargin = decision.transit_wins_ties ? marginMinutes > requiredMarginMinutes : marginMinutes >= requiredMarginMinutes;
   const choice = beatsMargin ? 'drive' : 'transit';
 
   // The spoken figure is the difference of the spoken minutes, so "30 against
@@ -122,17 +117,13 @@ export function decide(options, decision, context = {}) {
   // exact margin. A difference that rounds away is "about the same".
   const savedBy = Math.abs(Math.round(transitMinutes) - Math.round(driveMinutes));
   if (choice === 'drive') {
-    core.push(
-      `driving saves ${savedBy} minutes, more than the ${Math.round(requiredMarginMinutes)} needed`,
-    );
+    core.push(`driving saves ${savedBy} minutes, more than the ${Math.round(requiredMarginMinutes)} needed`);
   } else if (savedBy === 0) {
     core.push('both options take about the same time, and transit wins ties');
   } else if (marginMinutes < 0) {
     core.push(`transit is ${savedBy} minutes faster`);
   } else {
-    core.push(
-      `driving saves only ${savedBy} minutes, less than the ${Math.round(requiredMarginMinutes)} needed`,
-    );
+    core.push(`driving saves only ${savedBy} minutes, less than the ${Math.round(requiredMarginMinutes)} needed`);
   }
 
   let confidence = 1;
@@ -254,8 +245,7 @@ export function decide(options, decision, context = {}) {
   // and a zone; without both the fields are null and nothing is spoken.
   const now = context.now instanceof Date ? context.now : null;
   const timeZone = context.timeZone ?? null;
-  const arrival = (seconds) =>
-    now && timeZone ? arrivalAt(now, seconds, timeZone) : { iso: null, clock: null };
+  const arrival = (seconds) => (now && timeZone ? arrivalAt(now, seconds, timeZone) : { iso: null, clock: null });
   const driveArrival = arrival(options.driveThrough.totalSeconds);
   const transitArrival = arrival(options.parkAndRide.totalSeconds);
 
@@ -324,12 +314,7 @@ const capitalise = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  */
 export function arrivalAt(now, seconds, timeZone) {
   const at = new Date(now.getTime() + seconds * 1000);
-  const clock = new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone,
-  })
+  const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone })
     .format(at)
     // Intl may separate the meridiem with a narrow no-break space; TTS and
     // tests want a plain one.

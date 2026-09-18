@@ -42,10 +42,8 @@ export const LOG_TIMEOUT_MS = 4_000;
 
 // A module's fetch is documented never to throw. If one does anyway, the
 // result is its unknown shape, not a crashed process.
-const guard = (promise, unknown) =>
-  promise.catch((cause) => ({ failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) }));
-const guardWhole = (promise, unknown) =>
-  promise.catch((cause) => unknown(`unexpected error (${cause?.name ?? 'Error'})`));
+const guard = (promise, unknown) => promise.catch((cause) => ({ failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) }));
+const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexpected error (${cause?.name ?? 'Error'})`));
 
 /**
  * Compute the verdict for a loaded config.
@@ -65,27 +63,14 @@ const guardWhole = (promise, unknown) =>
  */
 export async function runVerdict(
   config,
-  {
-    fetchImpl = fetch,
-    now = new Date(),
-    log = true,
-    from = 'fork',
-    signalTimeoutMs = SIGNAL_TIMEOUT_MS,
-    logTimeoutMs = LOG_TIMEOUT_MS,
-  } = {},
+  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork', signalTimeoutMs = SIGNAL_TIMEOUT_MS, logTimeoutMs = LOG_TIMEOUT_MS } = {},
 ) {
   const { decision, secrets } = config;
   const nowMs = now.getTime();
   const deadline = () => AbortSignal.timeout(signalTimeoutMs);
 
-  const incidentsLoad = guard(
-    loadIncidents(config, secrets.keys.TRAFFIC_API_KEY ?? null, fetchImpl, { signal: deadline() }),
-    unknownIncidents,
-  );
-  const closuresLoad = guard(
-    loadClosures(config, fetchImpl, { now: nowMs, signal: deadline() }),
-    unknownClosures,
-  );
+  const incidentsLoad = guard(loadIncidents(config, secrets.keys.TRAFFIC_API_KEY ?? null, fetchImpl, { signal: deadline() }), unknownIncidents);
+  const closuresLoad = guard(loadClosures(config, fetchImpl, { now: nowMs, signal: deadline() }), unknownClosures);
   const chartLoad = guard(loadChart(fetchImpl, { now: nowMs, signal: deadline() }), unknownChart);
   // Scheduled events (CMB-13, CMB-25) run whenever venues are configured:
   // fetchEvents routes each venue to its provider and copes with a missing
@@ -93,29 +78,20 @@ export async function runVerdict(
   // track work (CMB-26) needs only the configured lines. No venues or no
   // lines means the signal is not attempted and stays null, which decide()
   // reads as "not consulted", not "clear".
-  const eventsPromise = (config.venues ?? []).length > 0
-    ? guardWhole(
-        fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }),
-        unknownEvents,
-      )
-    : Promise.resolve(null);
+  const eventsPromise =
+    (config.venues ?? []).length > 0
+      ? guardWhole(fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }), unknownEvents)
+      : Promise.resolve(null);
   const lines = config.transit?.lines ?? [];
-  const trackworkPromise = lines.length > 0
-    ? guardWhole(
-        fetchTrackwork(lines, fetchImpl, {
-          now: nowMs,
-          timeZone: config.route.timezone,
-          log: (line) => console.error(line),
-          signal: deadline(),
-        }),
-        unknownTrackwork,
-      )
-    : Promise.resolve(null);
+  const trackworkPromise =
+    lines.length > 0
+      ? guardWhole(
+          fetchTrackwork(lines, fetchImpl, { now: nowMs, timeZone: config.route.timezone, log: (line) => console.error(line), signal: deadline() }),
+          unknownTrackwork,
+        )
+      : Promise.resolve(null);
 
-  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, {
-    from,
-    now,
-  });
+  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, { from, now });
 
   // Incidents (CMB-22, route-matched since 2026-09-17), closures (CMB-28) and
   // Maryland records (CMB-16) are matched against the drive geometry.
@@ -127,22 +103,11 @@ export async function runVerdict(
     eventsPromise,
     trackworkPromise,
   ]);
-  const incidents = incidentsLoaded.failure
-    ?? assessTrajectory(incidentsLoaded.incidents, { now: nowMs, points });
-  const closures = closuresLoaded.failure
-    ?? assessClosures(closuresLoaded.records, { now: nowMs, sourceLive: true, points });
-  const maryland = chartLoaded.failure
-    ?? assessChart(chartLoaded.records, points, { now: nowMs, sourceLive: true });
+  const incidents = incidentsLoaded.failure ?? assessTrajectory(incidentsLoaded.incidents, { now: nowMs, points });
+  const closures = closuresLoaded.failure ?? assessClosures(closuresLoaded.records, { now: nowMs, sourceLive: true, points });
+  const maryland = chartLoaded.failure ?? assessChart(chartLoaded.records, points, { now: nowMs, sourceLive: true });
 
-  const verdict = decide(options, decision, {
-    incidents,
-    closures,
-    maryland,
-    events,
-    trackwork,
-    now,
-    timeZone: config.route.timezone,
-  });
+  const verdict = decide(options, decision, { incidents, closures, maryland, events, trackwork, now, timeZone: config.route.timezone });
 
   // CMB-11. Signals that postdate the frozen HEADER travel as extras and
   // become the EXTRA_COLUMNS, in that order. A failed write is reported,
@@ -172,27 +137,8 @@ export async function runVerdict(
       transit_walk_seconds: options.parkAndRide.walkSeconds ?? 0,
       incidents_route_matched: incidents.score === null ? null : incidents.routeMatched,
     };
-    logged = await logVerdict({
-      now,
-      config,
-      options,
-      incidents,
-      verdict,
-      extras,
-      fetchImpl,
-      signal: AbortSignal.timeout(logTimeoutMs),
-    });
+    logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
   }
 
-  return {
-    options,
-    incidents,
-    closures,
-    maryland,
-    events,
-    trackwork,
-    verdict,
-    spoken: speak(verdict),
-    logged,
-  };
+  return { options, incidents, closures, maryland, events, trackwork, verdict, spoken: speak(verdict), logged };
 }

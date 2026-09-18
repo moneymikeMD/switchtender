@@ -29,8 +29,7 @@
 // provider; see tokenFromEnvOrMetadata for the two supported sources.
 
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
-const METADATA_TOKEN_URL =
-  'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
+const METADATA_TOKEN_URL = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
 const METADATA_TIMEOUT_MS = 1000;
 
 /** Column order. Append only; never reorder. */
@@ -147,12 +146,7 @@ function partsIn(date, timeZone) {
 export function localTime(date, timeZone) {
   const p = partsIn(date, timeZone);
   const localDate = `${p.year}-${p.month}-${p.day}`;
-  return {
-    timestamp: `${localDate}T${p.hour}:${p.minute}:${p.second}${p.offset}`,
-    localDate,
-    weekday: p.weekday,
-    season: SEASONS[Number(p.month) - 1],
-  };
+  return { timestamp: `${localDate}T${p.hour}:${p.minute}:${p.second}${p.offset}`, localDate, weekday: p.weekday, season: SEASONS[Number(p.month) - 1] };
 }
 
 // A cell is a string. null and undefined are empty, never 0 (CLAUDE.md rule 4:
@@ -192,7 +186,7 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
   const drive = options?.driveThrough ?? {};
   const park = options?.parkAndRide ?? {};
   const congestion = drive.congestion ?? null;
-  const metres = congestion && !congestion.unknown ? congestion.metres ?? {} : {};
+  const metres = congestion && !congestion.unknown ? (congestion.metres ?? {}) : {};
   const degraded = config?.secrets?.degraded ?? [];
 
   const named = {
@@ -224,8 +218,7 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
     incidents_score: incidents?.score ?? null,
     // Unknown (score null) is an empty cell, never 'false' (rule 4).
     incidents_unstable: incidents && incidents.score !== null ? Boolean(incidents.unstable) : null,
-    incidents_by_category:
-      incidents?.byCategory && Object.keys(incidents.byCategory).length > 0 ? incidents.byCategory : null,
+    incidents_by_category: incidents?.byCategory && Object.keys(incidents.byCategory).length > 0 ? incidents.byCategory : null,
     incidents_reasons: joinList(incidents?.reasons, ' | '),
 
     degraded_signals: joinList(degraded, ', '),
@@ -323,8 +316,7 @@ export async function getLastChoice({ sheetId, tab, token, fetchImpl = fetch, si
   return { ok: true, choice: null, error: null };
 }
 
-const isPrefix = (shorter, longer) =>
-  shorter.length <= longer.length && shorter.every((v, i) => v === longer[i]);
+const isPrefix = (shorter, longer) => shorter.length <= longer.length && shorter.every((v, i) => v === longer[i]);
 
 /**
  * Make sure the tab exists and row 1 holds the header.
@@ -341,9 +333,14 @@ export async function ensureHeader({ sheetId, tab, token, fetchImpl = fetch, hea
   let read = await sheetsCall(fetchImpl, token, 'GET', readUrl, undefined, signal);
   if (!read.ok && read.status === 400) {
     // "Unable to parse range": the tab does not exist yet. Create it.
-    const added = await sheetsCall(fetchImpl, token, 'POST', `${SHEETS}/${sheetId}:batchUpdate`, {
-      requests: [{ addSheet: { properties: { title: tab } } }],
-    }, signal);
+    const added = await sheetsCall(
+      fetchImpl,
+      token,
+      'POST',
+      `${SHEETS}/${sheetId}:batchUpdate`,
+      { requests: [{ addSheet: { properties: { title: tab } } }] },
+      signal,
+    );
     if (!added.ok) return { ok: false, status: added.status, error: added.error, created: false, extended: false };
     read = { ok: true, status: 200, body: {} };
   }
@@ -367,18 +364,8 @@ export async function ensureHeader({ sheetId, tab, token, fetchImpl = fetch, hea
   }
 
   const writeUrl = `${SHEETS}/${sheetId}/values/${rangeOf(tab, 'A1')}?valueInputOption=RAW`;
-  const wrote = await sheetsCall(fetchImpl, token, 'PUT', writeUrl, {
-    range: a1Range(tab, 'A1'),
-    majorDimension: 'ROWS',
-    values: [wanted],
-  }, signal);
-  return {
-    ok: wrote.ok,
-    status: wrote.status,
-    error: wrote.error ?? null,
-    created: wrote.ok && empty,
-    extended: wrote.ok && !empty,
-  };
+  const wrote = await sheetsCall(fetchImpl, token, 'PUT', writeUrl, { range: a1Range(tab, 'A1'), majorDimension: 'ROWS', values: [wanted] }, signal);
+  return { ok: wrote.ok, status: wrote.status, error: wrote.error ?? null, created: wrote.ok && empty, extended: wrote.ok && !empty };
 }
 
 // ---------------------------------------------------------------------------
@@ -396,10 +383,7 @@ export async function tokenFromEnvOrMetadata({ env = process.env, fetchImpl = fe
   if (env.SHEETS_ACCESS_TOKEN) return env.SHEETS_ACCESS_TOKEN;
   try {
     const own = AbortSignal.timeout(METADATA_TIMEOUT_MS);
-    const response = await fetchImpl(METADATA_TOKEN_URL, {
-      headers: { 'Metadata-Flavor': 'Google' },
-      signal: signal ? AbortSignal.any([signal, own]) : own,
-    });
+    const response = await fetchImpl(METADATA_TOKEN_URL, { headers: { 'Metadata-Flavor': 'Google' }, signal: signal ? AbortSignal.any([signal, own]) : own });
     if (!response.ok) return null;
     const json = await response.json();
     return typeof json?.access_token === 'string' && json.access_token ? json.access_token : null;

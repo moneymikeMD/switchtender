@@ -15,7 +15,7 @@ export const USER_AGENT = 'switchtender/1 (Node fetch)';
 
 function urlFor(target, query) {
   const url = new URL(typeof target === 'string' ? target : target.url);
-  const params = { ...(typeof target === 'string' ? {} : target.params ?? {}), ...query };
+  const params = { ...(typeof target === 'string' ? {} : (target.params ?? {})), ...query };
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url.toString();
 }
@@ -23,11 +23,7 @@ function urlFor(target, query) {
 async function get(target, accept, { fetchImpl = fetch, query = {}, headers = {}, signal } = {}) {
   let response;
   try {
-    response = await fetchImpl(urlFor(target, query), {
-      method: 'GET',
-      headers: { Accept: accept, 'User-Agent': USER_AGENT, ...headers },
-      signal,
-    });
+    response = await fetchImpl(urlFor(target, query), { method: 'GET', headers: { Accept: accept, 'User-Agent': USER_AGENT, ...headers }, signal });
   } catch (cause) {
     return { error: `network error (${cause?.name ?? 'Error'})` };
   }

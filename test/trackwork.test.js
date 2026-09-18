@@ -103,7 +103,13 @@ test('single-column ranges produce the same window as two columns', () => {
 
 test('a cross-month range keeps its order and a single day spans one day', () => {
   const [cross, single] = parseTrackwork(
-    table([['Nov. 26 - Dec. 1', 'Blue', 'x'], ['Oct. 10', 'Orange', 'x']], ['Date', 'Line', 'Impact']),
+    table(
+      [
+        ['Nov. 26 - Dec. 1', 'Blue', 'x'],
+        ['Oct. 10', 'Orange', 'x'],
+      ],
+      ['Date', 'Line', 'Impact'],
+    ),
     { now: NOW },
   );
   assert.equal(cross.startsAt, et('2026-11-26T00:00:00-05:00'));
@@ -121,9 +127,13 @@ test('zonedMidnight honours daylight saving in the source zone', () => {
 
 test('a January window read in December rolls forward a year and says so', () => {
   const december = et('2026-12-20T12:00:00-05:00');
-  const [jan, dec] = parseTrackwork(table([['Jan. 3', 'Jan. 4', 'Red', 'x'], ['Dec. 27', 'Dec. 28', 'Green', 'x']]), {
-    now: december,
-  });
+  const [jan, dec] = parseTrackwork(
+    table([
+      ['Jan. 3', 'Jan. 4', 'Red', 'x'],
+      ['Dec. 27', 'Dec. 28', 'Green', 'x'],
+    ]),
+    { now: december },
+  );
   assert.equal(jan.startsAt, et('2027-01-03T00:00:00-05:00'));
   assert.equal(jan.rolledYear, true);
   assert.equal(dec.startsAt, et('2026-12-27T00:00:00-05:00'));
@@ -138,9 +148,7 @@ test('a December window still listed in January belongs to last year, not eleven
 });
 
 test('a range crossing New Year ends in the following year', () => {
-  const [w] = parseTrackwork(table([['Dec. 28 - Jan. 3', 'Silver', 'x']], ['Date', 'Line', 'Impact']), {
-    now: et('2026-12-20T12:00:00-05:00'),
-  });
+  const [w] = parseTrackwork(table([['Dec. 28 - Jan. 3', 'Silver', 'x']], ['Date', 'Line', 'Impact']), { now: et('2026-12-20T12:00:00-05:00') });
   assert.equal(w.startsAt, et('2026-12-28T00:00:00-05:00'));
   assert.equal(w.endsAt, et('2027-01-04T00:00:00-05:00') - 1);
 });
@@ -212,7 +220,13 @@ test('lines are read from text, from hrefs, and from "all lines"', () => {
 
 // --- relevant windows -------------------------------------------------------
 
-const red = { lines: ['Red', 'Silver'], startsAt: et('2026-10-03T00:00:00-04:00'), endsAt: et('2026-10-05T00:00:00-04:00') - 1, description: 'x', rolledYear: false };
+const red = {
+  lines: ['Red', 'Silver'],
+  startsAt: et('2026-10-03T00:00:00-04:00'),
+  endsAt: et('2026-10-05T00:00:00-04:00') - 1,
+  description: 'x',
+  rolledYear: false,
+};
 const green = { lines: ['Green'], startsAt: et('2026-12-16T00:00:00-05:00'), endsAt: et('2026-12-31T00:00:00-05:00') - 1, description: 'y', rolledYear: false };
 
 test('relevantWindows requires a line match and an overlap with the horizon', () => {
@@ -266,7 +280,7 @@ test('assessTrackwork: a window eight days out is neither active nor upcoming', 
   assert.deepEqual(s.reasons, []);
 });
 
-test('assessTrackwork: only the caller\'s lines are spoken from a shared row', () => {
+test("assessTrackwork: only the caller's lines are spoken from a shared row", () => {
   const s = assessTrackwork([red], ['Silver'], { now: et('2026-10-03T08:00:00-04:00') });
   assert.deepEqual(s.reasons, ['planned track work on the Silver Line through tomorrow']);
 });
@@ -284,14 +298,7 @@ test('assessTrackwork: staleWindows counts every window whose start has passed, 
 
 test('assessTrackwork: null input is the unknown shape', () => {
   const s = assessTrackwork(null, ['Red'], { now: NOW });
-  assert.deepEqual(s, {
-    active: null,
-    upcoming: null,
-    staleWindows: null,
-    reasons: ['track work schedule unavailable: no data'],
-    score: null,
-    unknown: true,
-  });
+  assert.deepEqual(s, { active: null, upcoming: null, staleWindows: null, reasons: ['track work schedule unavailable: no data'], score: null, unknown: true });
 });
 
 // --- staleness (rule 5) -----------------------------------------------------
@@ -371,14 +378,23 @@ test('fetchTrackwork: a page whose windows all ended long ago is stale, not clea
 
 test('fetchTrackwork logs each window whose year was inferred', async () => {
   const lines = [];
-  const body = table([['Jan. 3', 'Jan. 4', 'Red', 'x'], ['Dec. 27', 'Dec. 28', 'Green', 'x']]);
+  const body = table([
+    ['Jan. 3', 'Jan. 4', 'Red', 'x'],
+    ['Dec. 27', 'Dec. 28', 'Green', 'x'],
+  ]);
   await fetchTrackwork(['Red'], stub({ body }).fetchImpl, { now: et('2026-12-20T12:00:00-05:00'), log: (l) => lines.push(l) });
   assert.equal(lines.length, 1);
   assert.match(lines[0], /year inferred for Red window starting 2027-01-03/);
 });
 
 test('fetchTrackwork never throws even when the fetch implementation is broken, and carries the deadline', async () => {
-  const s = await fetchTrackwork(['Red'], () => { throw new RangeError('no'); }, { now: NOW });
+  const s = await fetchTrackwork(
+    ['Red'],
+    () => {
+      throw new RangeError('no');
+    },
+    { now: NOW },
+  );
   assert.equal(s.unknown, true);
   const { fetchImpl, calls } = stub();
   const signal = AbortSignal.timeout(10_000);

@@ -29,15 +29,41 @@ const DAY = 24 * 60 * 60 * 1000;
 const points = decodePolyline(fixture('routes-congested.json').driveThrough.polyline.encodedPolyline);
 
 // One incident placed exactly on a polyline vertex, one roughly 55 km away.
-const onRoute = { lat: points[3][0], lon: points[3][1], description: 'Action Event @ SYNTHETIC RD @ TEST ST', type: 'Other', kind: 'incident', startDateTime: NOW - DAY, lastCachedDataUpdateTime: NOW };
-const farAway = { lat: points[3][0] + 0.5, lon: points[3][1], description: 'Action Event @ ELSEWHERE', type: 'Other', kind: 'incident', startDateTime: NOW - DAY, lastCachedDataUpdateTime: NOW };
+const onRoute = {
+  lat: points[3][0],
+  lon: points[3][1],
+  description: 'Action Event @ SYNTHETIC RD @ TEST ST',
+  type: 'Other',
+  kind: 'incident',
+  startDateTime: NOW - DAY,
+  lastCachedDataUpdateTime: NOW,
+};
+const farAway = {
+  lat: points[3][0] + 0.5,
+  lon: points[3][1],
+  description: 'Action Event @ ELSEWHERE',
+  type: 'Other',
+  kind: 'incident',
+  startDateTime: NOW - DAY,
+  lastCachedDataUpdateTime: NOW,
+};
 
 test('normaliseChart maps the live events fixture to the normalised shape', () => {
   const list = normaliseChart(events);
   assert.equal(list.length, events.data.length);
   const first = list[0];
   assert.deepEqual(Object.keys(first).sort(), [
-    'county', 'description', 'direction', 'endsAt', 'kind', 'lanes', 'lat', 'lon', 'startedAt', 'type', 'updatedAt',
+    'county',
+    'description',
+    'direction',
+    'endsAt',
+    'kind',
+    'lanes',
+    'lat',
+    'lon',
+    'startedAt',
+    'type',
+    'updatedAt',
   ]);
   assert.equal(first.updatedAt, events.data[0].lastCachedDataUpdateTime);
   assert.equal(first.endsAt, null, 'events carry no end date');
@@ -113,10 +139,7 @@ test('assessChart counts on-route against total and describes the hits', () => {
   assert.equal(result.onRoute, 2);
   assert.equal(result.total, 3);
   assert.equal(result.score, null);
-  assert.deepEqual(result.descriptions, [
-    'incident: SYNTHETIC RD @ TEST ST',
-    'closure: SYNTHETIC RD BETWEEN A AND B',
-  ]);
+  assert.deepEqual(result.descriptions, ['incident: SYNTHETIC RD @ TEST ST', 'closure: SYNTHETIC RD BETWEEN A AND B']);
   assert.equal(result.reasons.length, 1);
   assert.match(result.reasons[0], /^2 maryland records on the route: /);
 });
@@ -126,7 +149,11 @@ test('assessChart with nothing on the route is a real zero, and caps description
   assert.equal(none.onRoute, 0);
   assert.equal(none.total, 1);
   assert.deepEqual(none.reasons, []);
-  const many = assessChart(Array.from({ length: 7 }, () => onRoute), points, { now: NOW });
+  const many = assessChart(
+    Array.from({ length: 7 }, () => onRoute),
+    points,
+    { now: NOW },
+  );
   assert.equal(many.onRoute, 7);
   assert.equal(many.descriptions.length, 5);
 });
@@ -179,7 +206,14 @@ test('a feed that answers success:false is unknown, and the deadline rides along
   assert.match((await fetchChart(points, stub, { now: NOW })).reasons[0], /reported maintenance/);
   const inits = [];
   const signal = AbortSignal.timeout(10_000);
-  await fetchChart(points, async (url, init) => { inits.push(init); return ok({ data: [] }); }, { now: NOW, signal });
+  await fetchChart(
+    points,
+    async (url, init) => {
+      inits.push(init);
+      return ok({ data: [] });
+    },
+    { now: NOW, signal },
+  );
   assert.ok(inits.every((i) => i.signal === signal));
 });
 
@@ -201,12 +235,24 @@ test('fetchChart with a throwing fetch is unknown and never throws', async () =>
   assert.equal(result.onRoute, null);
   assert.match(result.reasons[0], /network error \(TypeError\)/);
   // A fetch that throws synchronously is a broken injection, not a crash.
-  const broken = await fetchChart(points, () => { throw new RangeError('no'); }, { now: NOW });
+  const broken = await fetchChart(
+    points,
+    () => {
+      throw new RangeError('no');
+    },
+    { now: NOW },
+  );
   assert.match(broken.reasons[0], /\(RangeError\)/);
 });
 
 test('fetchChart with unparseable JSON or a changed shape is unknown', async () => {
-  const bad = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } });
+  const bad = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('bad');
+    },
+  });
   assert.match((await fetchChart(points, bad, { now: NOW })).reasons[0], /unparseable/);
   const changed = async () => ok({ features: [] });
   assert.match((await fetchChart(points, changed, { now: NOW })).reasons[0], /no data list/);

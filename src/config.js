@@ -51,9 +51,7 @@ function must(obj, path, kind) {
     throw new ConfigError(`config: missing required key "${path}"`);
   }
   if (kind && typeof value !== kind) {
-    throw new ConfigError(
-      `config: key "${path}" should be ${kind}, got ${typeof value}`,
-    );
+    throw new ConfigError(`config: key "${path}" should be ${kind}, got ${typeof value}`);
   }
   // TOML admits nan and inf as numbers. Neither is a distance or a margin.
   if (kind === 'number' && !Number.isFinite(value)) {
@@ -93,9 +91,7 @@ export function place(raw, name) {
   for (const key of Object.keys(p)) {
     if (PLACE_KEYS.includes(key)) continue;
     const hint = RENAMED_PLACE_KEYS[key] ? ` (renamed to "${RENAMED_PLACE_KEYS[key]}")` : '';
-    throw new ConfigError(
-      `config: route.${name} has unknown key "${key}"${hint}; a place takes ${PLACE_KEYS.join(', ')}`,
-    );
+    throw new ConfigError(`config: route.${name} has unknown key "${key}"${hint}; a place takes ${PLACE_KEYS.join(', ')}`);
   }
   const lat = must(raw, `route.${name}.lat`, 'number');
   const lon = must(raw, `route.${name}.lon`, 'number');
@@ -110,9 +106,7 @@ export function place(raw, name) {
   }
   const addl_walk_mins = p.addl_walk_mins ?? 0;
   if (typeof addl_walk_mins !== 'number' || !Number.isFinite(addl_walk_mins) || addl_walk_mins < 0) {
-    throw new ConfigError(
-      `config: route.${name}.addl_walk_mins should be a number of zero or more, got ${JSON.stringify(addl_walk_mins)}`,
-    );
+    throw new ConfigError(`config: route.${name}.addl_walk_mins should be a number of zero or more, got ${JSON.stringify(addl_walk_mins)}`);
   }
   return { lat, lon, label: must(raw, `route.${name}.label`, 'string'), addl_walk_mins };
 }
@@ -132,7 +126,7 @@ function logBlock(raw) {
   if (typeof sheet_tab !== 'string') {
     throw new ConfigError(`config: key "log.sheet_tab" should be string, got ${typeof sheet_tab}`);
   }
-  const sheet_id = enabled ? must(raw, 'log.sheet_id', 'string') : block.sheet_id ?? null;
+  const sheet_id = enabled ? must(raw, 'log.sheet_id', 'string') : (block.sheet_id ?? null);
   if (sheet_id !== null && typeof sheet_id !== 'string') {
     throw new ConfigError(`config: key "log.sheet_id" should be string, got ${typeof sheet_id}`);
   }
@@ -154,12 +148,13 @@ function transitBlock(raw) {
     throw new ConfigError('config: key "transit.lines" should be an array of non-empty strings');
   }
   const canonical = lines.map((l) => {
-    const wanted = l.trim().replace(/\s+line$/i, '').toLowerCase();
+    const wanted = l
+      .trim()
+      .replace(/\s+line$/i, '')
+      .toLowerCase();
     const found = LINES.find((name) => name.toLowerCase() === wanted);
     if (!found) {
-      throw new ConfigError(
-        `config: transit.lines entry ${JSON.stringify(l)} is not a known line; use one of ${LINES.join(', ')}`,
-      );
+      throw new ConfigError(`config: transit.lines entry ${JSON.stringify(l)} is not a known line; use one of ${LINES.join(', ')}`);
     }
     return found;
   });
@@ -184,7 +179,10 @@ function venueEntry(v, i) {
   if (typeof v.name !== 'string' || v.name.trim() === '') {
     throw new ConfigError(`config: venues[${i}].name should be a non-empty string`);
   }
-  for (const [k, limit] of [['lat', 90], ['lon', 180]]) {
+  for (const [k, limit] of [
+    ['lat', 90],
+    ['lon', 180],
+  ]) {
     if (typeof v[k] !== 'number' || !Number.isFinite(v[k])) {
       throw new ConfigError(`config: venues[${i}].${k} should be a number, got ${JSON.stringify(v[k])}`);
     }
@@ -197,9 +195,7 @@ function venueEntry(v, i) {
   }
   const provider = v.provider ?? 'ticketmaster';
   if (!VENUE_PROVIDERS.includes(provider)) {
-    throw new ConfigError(
-      `config: venues[${i}].provider should be one of ${VENUE_PROVIDERS.join(', ')}, got ${JSON.stringify(provider)}`,
-    );
+    throw new ConfigError(`config: venues[${i}].provider should be one of ${VENUE_PROVIDERS.join(', ')}, got ${JSON.stringify(provider)}`);
   }
   let mlb_team_id = null;
   if (provider === 'mlb') {
@@ -243,9 +239,7 @@ export function parseConfig(text) {
     max_lat: must(raw, 'incidents.max_lat', 'number'),
   };
   if (bbox.min_lon >= bbox.max_lon || bbox.min_lat >= bbox.max_lat) {
-    throw new ConfigError(
-      'config: incidents bounding box has min greater than or equal to max',
-    );
+    throw new ConfigError('config: incidents bounding box has min greater than or equal to max');
   }
 
   const venues = (raw.venues ?? []).map((v, i) => venueEntry(v, i));
@@ -282,9 +276,7 @@ export function loadSecrets(env = process.env) {
     if (value) {
       keys[name] = value;
     } else if (required) {
-      throw new ConfigError(
-        `config: required environment variable ${name} is not set, so ${signal} is unavailable and no verdict is possible`,
-      );
+      throw new ConfigError(`config: required environment variable ${name} is not set, so ${signal} is unavailable and no verdict is possible`);
     } else {
       degraded.push(signal);
     }
