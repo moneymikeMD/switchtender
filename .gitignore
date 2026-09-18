@@ -53,6 +53,9 @@ desktop.ini
 *.swo
 *~
 
+# ===== Local-only (never commit) =====
+Makefile
+
 # ===== Tooling (repo-local, not shared) =====
 .tokensave
 .serena/
