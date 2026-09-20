@@ -1,0 +1,12 @@
+{
+  "name": "switchtender",
+  "version": "0.1.0",
+  "description": "Commute-fork decision service. Declares its work-order ticket-tooling dependency; not itself published to a marketplace.",
+  "author": { "name": "Mike Garrett" },
+  "homepage": "https://github.com/moneymikeMD/switchtender",
+  "license": "UNLICENSED",
+  "dependencies": [
+    { "name": "work-order", "version": "^0.1" },
+    { "name": "work-order-jira", "version": "^0.2" }
+  ]
+}
