@@ -22,7 +22,12 @@ ROUTES_API_KEY=... npm start
 - **Tickets:** Jira project key `CMB`, Space named Switchtender. The key is
   deliberately left over from the v1 project, Commuter Bot. The epic is CMB-7.
   The site host and the Jira wrapper are in the owner's night-watchman config,
-  not in this repo.
+  not in this repo. This repo conforms to the
+  [work-order](https://github.com/moneymikeMD/work-order) ticket contract at
+  profile `minimal` — never night-watchman, which this repo does not run (see
+  below). `docs/tickets.md` has the conformance claim, the plugin dependency
+  that backs it, and a recorded gap in what can actually be machine-checked
+  against live CMB tickets today.
 - **Memory:** the global memory-graph. Recall with single nouns, one per call:
   `switchtender`, `commuter`, `cmb`, `tomtom`, `wmata`, `chart`, `ddot`.
 - **Resume notes:** `docs/handoffs/`, newest first. Read only the newest.

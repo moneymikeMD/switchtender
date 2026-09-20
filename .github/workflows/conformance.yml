@@ -1,0 +1,36 @@
+name: conformance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  no-night-watchman:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: work-order is declared, night-watchman is not
+        run: |
+          if [ ! -f .claude-plugin/plugin.json ]; then
+            echo "::error::.claude-plugin/plugin.json is missing"
+            exit 1
+          fi
+          if jq -e '.dependencies // [] | map(if type=="string" then . else .name end) | contains(["night-watchman"])' \
+              .claude-plugin/plugin.json >/dev/null; then
+            echo "::error::plugin.json depends on night-watchman — this repo does not run that operating model"
+            exit 1
+          fi
+          if ! jq -e '.dependencies // [] | map(if type=="string" then . else .name end) | contains(["work-order"])' \
+              .claude-plugin/plugin.json >/dev/null; then
+            echo "::error::plugin.json does not declare the work-order dependency"
+            exit 1
+          fi
+          if [ ! -f docs/tickets.md ]; then
+            echo "::error::docs/tickets.md is missing"
+            exit 1
+          fi
+          if ! grep -q 'profile minimal' docs/tickets.md; then
+            echo "::error::docs/tickets.md does not record a profile claim"
+            exit 1
+          fi
