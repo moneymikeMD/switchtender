@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/moneymikeMD/switchtender/compare/v1.1.0...v1.2.0) (2026-09-20)
+
+
+### Features
+
+* adopt work-order for ticket tooling, not night-watchman (CMB-7) ([#16](https://github.com/moneymikeMD/switchtender/issues/16)) ([4ee5223](https://github.com/moneymikeMD/switchtender/commit/4ee52236e1f1c5ea93064f324bba7b984d66d206))
+
 ## [1.1.0](https://github.com/moneymikeMD/switchtender/compare/v1.0.0...v1.1.0) (2026-09-18)
 
 
