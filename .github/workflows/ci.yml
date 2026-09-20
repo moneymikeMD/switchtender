@@ -16,3 +16,9 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm test
+
+  no-personal-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: moneymikeMD/ai-toolkit/actions/no-personal-paths@v1
