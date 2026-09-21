@@ -101,6 +101,10 @@ step by step, for reference or for Tasker.
 10. Test the geofence for real once, on a weekday, at speed. If it fires late
     or not at all, first widen the radius, then move the pin further out.
 
+Validated on a real drive 2026-09-21: the geofence fired unattended at the
+trigger point at speed, the call returned, and the verdict was spoken with
+enough road left to act on it. No radius or pin change was needed.
+
 Do not export or share this macro to MacroDroid's template store. The secret
 sits in it as plain text.
 
@@ -112,6 +116,8 @@ after the boundary, which in the background can be tens of seconds behind; at
 inside the fence, enough for a fix. Under 150 m is unreliable in this API. If
 the announcement lands too close to the fork, move the pin out rather than
 raising `lead_miles`: the service only uses `lead_miles` as a description.
+
+400 m at `lead_miles = 4.0` is confirmed in practice (2026-09-21 drive).
 
 ## Car audio and Android Auto
 
