@@ -15,7 +15,7 @@ const verdict = { choice: 'transit', confidence: 0.7, reasons: ['test'] };
 const servers = [];
 after(() => Promise.all(servers.map((s) => new Promise((r) => s.close(r)))));
 
-async function start({ run, logger = () => {}, timeoutMs, previousChoice, push } = {}) {
+async function start({ run, logger = () => {}, timeoutMs, previousChoice, push, recordArrival } = {}) {
   const lines = [];
   const server = createServer({
     config,
@@ -25,6 +25,7 @@ async function start({ run, logger = () => {}, timeoutMs, previousChoice, push }
     timeoutMs,
     previousChoice,
     push,
+    recordArrival,
     logger: (line) => {
       lines.push(line);
       logger(line);
@@ -252,4 +253,87 @@ test('?from=origin reaches the pipeline; anything else but fork is a 400 after t
 
   // Unauthenticated: 401, not 400. The parameter is not validated for strangers.
   assert.equal((await fetch(`${base}/verdict?from=garage`)).status, 401);
+});
+
+// /arrived (CMB-41): the phone reports reaching the lot or the office door, so
+// a verdict row can be scored against what the trip actually took.
+
+const arrivedOk = async () => ({ ok: true, duplicate: false, verdictAt: '2026-09-16T08:30:00-04:00', error: null });
+
+test('/arrived needs the key, the POST method and a place it knows', async () => {
+  const { base } = await start({ recordArrival: arrivedOk });
+  const unauthenticated = await fetch(`${base}/arrived?place=office`, { method: 'POST' });
+  assert.equal(unauthenticated.status, 401);
+  assert.equal(await unauthenticated.text(), '');
+
+  const wrongMethod = await fetch(`${base}/arrived?place=office`, { headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(wrongMethod.status, 405);
+
+  const noPlace = await fetch(`${base}/arrived`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(noPlace.status, 400);
+  assert.match((await noPlace.json()).error, /place must be one of park, office/);
+
+  const strangePlace = await fetch(`${base}/arrived?place=moon`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(strangePlace.status, 400);
+});
+
+test('/arrived records the arrival and names the verdict it belongs to', async () => {
+  const seen = [];
+  const { base } = await start({
+    recordArrival: async (args) => {
+      seen.push(args);
+      return arrivedOk();
+    },
+  });
+  const res = await fetch(`${base}/arrived?place=park`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    recorded: true,
+    duplicate: false,
+    place: 'park',
+    at: '2026-09-16T12:00:00.000Z',
+    verdictAt: '2026-09-16T08:30:00-04:00',
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].place, 'park');
+  assert.equal(seen[0].now.toISOString(), '2026-09-16T12:00:00.000Z');
+});
+
+test('/arrived takes the arrival time from the caller when it is given, and refuses nonsense', async () => {
+  const seen = [];
+  const { base } = await start({
+    recordArrival: async (args) => {
+      seen.push(args.now.toISOString());
+      return arrivedOk();
+    },
+  });
+  const res = await fetch(`${base}/arrived?place=office&at=2026-09-16T09:59:00-04:00`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).at, '2026-09-16T13:59:00.000Z');
+  assert.deepEqual(seen, ['2026-09-16T13:59:00.000Z']);
+
+  const bad = await fetch(`${base}/arrived?place=office&at=tuesday`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(bad.status, 400);
+});
+
+test('a second arrival for the same place is reported, not recorded twice', async () => {
+  const { base } = await start({ recordArrival: async () => ({ ok: true, duplicate: true, verdictAt: null, error: null }) });
+  const res = await fetch(`${base}/arrived?place=office`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.duplicate, true);
+  assert.equal(body.recorded, false);
+});
+
+test('a failed or stalled sheet write still answers the phone, and says so in the log', async () => {
+  const failed = await start({ recordArrival: async () => ({ ok: false, duplicate: false, verdictAt: null, error: 'sheets 503: nope' }) });
+  const res = await fetch(`${failed.base}/arrived?place=office`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).recorded, false);
+  assert.ok(failed.lines.some((l) => l.includes('arrival log failed: sheets 503')));
+
+  const stalled = await start({ timeoutMs: 10, recordArrival: () => new Promise(() => {}) });
+  const slow = await fetch(`${stalled.base}/arrived?place=park`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(slow.status, 200);
+  assert.equal((await slow.json()).recorded, false);
 });

@@ -120,11 +120,18 @@ function logBlock(raw) {
   if (typeof sheet_tab !== 'string') {
     throw new ConfigError(`config: key "log.sheet_tab" should be string, got ${typeof sheet_tab}`);
   }
+  const arrivals_tab = block.arrivals_tab ?? 'arrivals';
+  if (typeof arrivals_tab !== 'string') {
+    throw new ConfigError(`config: key "log.arrivals_tab" should be string, got ${typeof arrivals_tab}`);
+  }
+  if (arrivals_tab === sheet_tab) {
+    throw new ConfigError('config: log.arrivals_tab and log.sheet_tab must differ; arrivals have their own columns');
+  }
   const sheet_id = enabled ? must(raw, 'log.sheet_id', 'string') : (block.sheet_id ?? null);
   if (sheet_id !== null && typeof sheet_id !== 'string') {
     throw new ConfigError(`config: key "log.sheet_id" should be string, got ${typeof sheet_id}`);
   }
-  return { enabled, sheet_id, sheet_tab };
+  return { enabled, sheet_id, sheet_tab, arrivals_tab };
 }
 
 // The transit leg (CMB-26). Optional: a config without [transit] names no rail

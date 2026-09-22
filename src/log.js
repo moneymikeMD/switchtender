@@ -440,3 +440,98 @@ export async function logVerdict({
     return { ok: false, error: `unexpected: ${cause?.message ?? cause}` };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Arrivals (CMB-41)
+//
+// The verdict row says what was predicted. Nothing said what happened, so no
+// row could be scored and rule 3 could never be satisfied. An arrival is
+// captured by the phone, at a geofence, with no one remembering to do it.
+//
+// A separate tab, appended to, rather than a column written back into the
+// verdict row: the verdict is appended at the fork and the arrival lands
+// minutes later on an instance that no longer exists, so the row index from
+// that append is gone. The join is by local date, in the query.
+
+export const ARRIVAL_PLACES = Object.freeze(['park', 'office']);
+
+export const ARRIVALS_HEADER = Object.freeze(['timestamp', 'local_date', 'weekday', 'place', 'verdict_timestamp', 'source']);
+
+const TIMESTAMP_COLUMN = columnLetter(HEADER.indexOf('timestamp'));
+
+/**
+ * The timestamp of the last verdict logged on `localDate`, or null. Null is
+ * "no verdict to attach this arrival to", never an error the caller should
+ * treat as one: an arrival worth recording is worth recording alone.
+ */
+export async function lastVerdictAt({ sheetId, tab, token, localDate, fetchImpl = fetch, signal }) {
+  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${TIMESTAMP_COLUMN}2:${TIMESTAMP_COLUMN}`)}`;
+  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  if (!result.ok) return { ok: false, timestamp: null, error: result.error };
+  const values = result.body?.values ?? [];
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const value = values[i]?.[0];
+    if (typeof value === 'string' && value.startsWith(localDate)) return { ok: true, timestamp: value, error: null };
+  }
+  return { ok: true, timestamp: null, error: null };
+}
+
+/**
+ * Has this place already been recorded as arrived at on this local date?
+ * A Play services geofence can fire twice on one approach, and a lunch trip
+ * re-enters the office fence; the first arrival of the day is the true one.
+ */
+export async function arrivalLogged({ sheetId, tab, token, localDate, place, fetchImpl = fetch, signal }) {
+  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, 'A2:D')}`;
+  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  // A tab that does not exist yet holds no arrivals; anything else that fails
+  // is reported, and the caller decides.
+  if (!result.ok) return { ok: result.status === 400, logged: false, error: result.status === 400 ? null : result.error };
+  const values = result.body?.values ?? [];
+  const dateColumn = ARRIVALS_HEADER.indexOf('local_date');
+  const placeColumn = ARRIVALS_HEADER.indexOf('place');
+  const logged = values.some((row) => row?.[dateColumn] === localDate && row?.[placeColumn] === place);
+  return { ok: true, logged, error: null };
+}
+
+/** Build one arrivals row, aligned to ARRIVALS_HEADER. */
+export function buildArrivalRow({ now = new Date(), timeZone = 'UTC', place, verdictAt = null, source = 'phone' }) {
+  const t = localTime(now, timeZone);
+  return [t.timestamp, t.localDate, t.weekday, place, verdictAt, source].map(cell);
+}
+
+/**
+ * Record one arrival. Never throws, and a failure is reported rather than
+ * raised: the phone is at a destination, not waiting on a spreadsheet.
+ * Returns { ok, duplicate, verdictAt, error }.
+ */
+export async function logArrival({ now = new Date(), config, place, source = 'phone', tokenProvider = tokenFromEnvOrMetadata, fetchImpl = fetch, signal }) {
+  try {
+    const sheetId = config?.log?.sheet_id;
+    const tab = config?.log?.arrivals_tab ?? 'arrivals';
+    const verdictsTab = config?.log?.sheet_tab ?? 'verdicts';
+    if (!sheetId) return { ok: false, duplicate: false, verdictAt: null, error: 'no sheet id configured' };
+    if (!ARRIVAL_PLACES.includes(place)) return { ok: false, duplicate: false, verdictAt: null, error: `unknown place ${place}` };
+
+    const token = await tokenProvider({ fetchImpl, signal });
+    if (!token) return { ok: false, duplicate: false, verdictAt: null, error: 'no credentials' };
+
+    const timeZone = config?.route?.timezone ?? 'UTC';
+    const { localDate } = localTime(now, timeZone);
+    const target = { sheetId, tab, token, fetchImpl, signal };
+
+    const already = await arrivalLogged({ ...target, localDate, place });
+    if (already.ok && already.logged) return { ok: true, duplicate: true, verdictAt: null, error: null };
+
+    const header = await ensureHeader({ ...target, header: [...ARRIVALS_HEADER] });
+    if (!header.ok) return { ok: false, duplicate: false, verdictAt: null, error: header.error ?? `header check failed (${header.status})` };
+
+    const verdict = await lastVerdictAt({ ...target, tab: verdictsTab, localDate });
+    const row = buildArrivalRow({ now, timeZone, place, verdictAt: verdict.timestamp, source });
+    const appended = await appendRow(row, target);
+    if (!appended.ok) return { ok: false, duplicate: false, verdictAt: null, error: appended.error ?? `append failed (${appended.status})` };
+    return { ok: true, duplicate: false, verdictAt: verdict.timestamp, error: null };
+  } catch (cause) {
+    return { ok: false, duplicate: false, verdictAt: null, error: `unexpected: ${cause?.message ?? cause}` };
+  }
+}

@@ -108,6 +108,38 @@ enough road left to act on it. No radius or pin change was needed.
 Do not export or share this macro to MacroDroid's template store. The secret
 sits in it as plain text.
 
+## Arrival macros (CMB-41)
+
+The fork macro says what the engine predicted. Two more geofences say what
+actually happened, so a verdict can be scored. They are what makes the log
+worth tuning against; without them every row is a prediction with no outcome.
+
+Build one macro per place. Both are the same three blocks:
+
+1. **Trigger** > Location > **Geofence Trigger**, Area Entered, loitering
+   delay 0. One fence on the park-and-ride lot, one on the office. Name them
+   `Switchtender arrived park` and `Switchtender arrived office`.
+2. **Action** > Applications > **HTTP Request**. Method **POST**, URL
+   `https://<service>/arrived?place=park` (or `?place=office`), one header
+   parameter `X-Switchtender-Key` with the shared secret. No body. The
+   service has no response for the macro to read, so no JSON parse and no
+   Speak Text: an arrival is silent.
+3. **Constraints**: none needed. The server ignores a second arrival for the
+   same place on the same local date, so a lunch trip that re-enters the
+   office fence changes nothing, and a fence that fires twice on one approach
+   records once.
+
+Radius is not the fork's 400 m. That number exists because a car at 60 mph
+needs a wide fence to catch a background location fix; arriving at a lot or a
+door happens at walking pace and the fix has time. Start at **150 m**, the
+smallest this API is reliable at, and widen only if an arrival goes missing.
+A tight fence matters here: the arrival time is the measurement, and a fence
+that fires a quarter mile out records a time that was never true.
+
+The arrival time may also be supplied as `&at=<ISO 8601>` when the macro
+queues a request offline and sends it late. Without it the server uses the
+moment the request landed.
+
 ## Geofence radius
 
 Start at **400 m**. Play services geofences fire on the next location fix
