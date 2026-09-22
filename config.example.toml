@@ -104,6 +104,9 @@ lines = []
 enabled = false
 sheet_id = "1AbC...example"
 sheet_tab = "verdicts"
+# Arrivals recorded by the phone at the parking lot and the office door
+# (CMB-41), appended to their own tab and joined to a verdict by local date.
+arrivals_tab = "arrivals"
 
 [incidents]
 # Bounding box for the live incident query, covering the stretch of the route

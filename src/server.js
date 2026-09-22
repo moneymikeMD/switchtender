@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS } from './routes.js';
 import { runVerdict } from './engine.js';
-import { getLastChoice, tokenFromEnvOrMetadata } from './log.js';
+import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES } from './log.js';
 import { pushIfChanged } from './notify.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
@@ -93,6 +93,7 @@ export function createServer({
   fetchImpl = fetch,
   previousChoice = defaultPreviousChoice,
   push = pushIfChanged,
+  recordArrival = logArrival,
 }) {
   if (typeof secret !== 'string' || secret.length === 0) {
     throw new Error(`${SECRET_ENV} is not set`);
@@ -134,6 +135,10 @@ export function createServer({
     const { pathname } = url;
     if (pathname === '/health') {
       send(res, 200, 'ok', 'text/plain');
+      return pathname;
+    }
+    if (pathname === '/arrived') {
+      await arrived(req, res, url);
       return pathname;
     }
     if (pathname !== '/verdict') {
@@ -191,6 +196,51 @@ export function createServer({
       }
     }
     return pathname;
+  }
+
+  /**
+   * Record that the owner reached a destination (CMB-41). The phone fires this
+   * from a geofence, so it answers 200 whenever the request itself was sound:
+   * a failed sheet write is reported in the body and never as a status the
+   * macro would treat as something to do again.
+   */
+  async function arrived(req, res, url) {
+    if (req.method !== 'POST') {
+      send(res, 405);
+      return;
+    }
+    if (!keyMatches(req.headers[KEY_HEADER], secret)) {
+      send(res, 401);
+      return;
+    }
+    const place = url.searchParams.get('place');
+    if (!ARRIVAL_PLACES.includes(place)) {
+      send(res, 400, { error: `place must be one of ${ARRIVAL_PLACES.join(', ')}` });
+      return;
+    }
+    const at = url.searchParams.get('at');
+    // A phone clock the caller supplies is trusted only as far as being a
+    // date; anything else is the moment the request landed.
+    const supplied = at === null ? null : new Date(at);
+    if (supplied !== null && Number.isNaN(supplied.getTime())) {
+      send(res, 400, { error: 'at must be an ISO 8601 timestamp' });
+      return;
+    }
+    const when = supplied ?? now();
+    try {
+      const result = await withTimeout(recordArrival({ now: when, config, place, fetchImpl }), timeoutMs);
+      if (!result.ok) logger(`arrival log failed: ${result.error}`);
+      send(res, 200, {
+        recorded: result.ok && !result.duplicate,
+        duplicate: result.duplicate,
+        place,
+        at: when.toISOString(),
+        verdictAt: result.verdictAt ?? null,
+      });
+    } catch (error) {
+      logger(`arrival error: ${error?.message ?? error}`);
+      send(res, 200, { recorded: false, duplicate: false, place, at: when.toISOString(), verdictAt: null });
+    }
   }
 
   // Socket-level guard behind the promise race, so a stalled client cannot

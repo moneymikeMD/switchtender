@@ -67,6 +67,24 @@ scripts/deploy-cloud-run.sh --update-config
 A new secret version is mounted by the new revision. Without the flag the
 script keeps the existing version.
 
+## Arrivals (CMB-41)
+
+`POST /arrived?place=park|office` records that the owner reached a place, and
+appends one row to the sheet's `arrivals` tab (`[log] arrivals_tab`) with the
+local timestamp, the place, and the timestamp of that day's last verdict row
+so the two can be joined. It takes the same `X-Switchtender-Key` header as
+`/verdict`, and `&at=<ISO 8601>` overrides the arrival time.
+
+It answers 200 whenever the request itself was sound, including when the
+sheet write failed — the phone is at a destination, not waiting on a
+spreadsheet, and a status the macro might retry on would only queue duplicate
+arrivals. The body says what happened: `recorded`, `duplicate` (a second
+arrival for that place on that local date, which is ignored) and `verdictAt`
+(null when no verdict was logged that day; an arrival is still worth having).
+A failed write is logged server-side.
+
+The tab is created on first use, like the verdicts tab.
+
 ## Weekday morning push (CMB-36, CMB-37)
 
 A Cloud Scheduler job `switchtender-verdict-check`, weekdays 7:00 AM

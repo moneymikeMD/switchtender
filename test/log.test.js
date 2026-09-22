@@ -17,6 +17,12 @@ import {
   logVerdict,
   tokenFromEnvOrMetadata,
   getLastChoice,
+  ARRIVALS_HEADER,
+  ARRIVAL_PLACES,
+  buildArrivalRow,
+  logArrival,
+  lastVerdictAt,
+  arrivalLogged,
 } from '../src/log.js';
 import { parseConfig, ConfigError } from '../src/config.js';
 
@@ -400,14 +406,14 @@ test('tokenFromEnvOrMetadata prefers the environment and returns null when metad
 
 test('the [log] block in the example parses and is disabled', () => {
   const c = parseConfig(exampleText);
-  assert.deepEqual(c.log, { enabled: false, sheet_id: '1AbC...example', sheet_tab: 'verdicts' });
+  assert.deepEqual(c.log, { enabled: false, sheet_id: '1AbC...example', sheet_tab: 'verdicts', arrivals_tab: 'arrivals' });
 });
 
 test('a config without [log] does not log', () => {
   const stripped = exampleText.replace(/\[log\][\s\S]*?(?=\n\[incidents\])/, '');
   assert.ok(!stripped.includes('[log]'));
   const c = parseConfig(stripped);
-  assert.deepEqual(c.log, { enabled: false, sheet_id: null, sheet_tab: 'verdicts' });
+  assert.deepEqual(c.log, { enabled: false, sheet_id: null, sheet_tab: 'verdicts', arrivals_tab: 'arrivals' });
 });
 
 test('enabling the log without a sheet id is a config error', () => {
@@ -421,4 +427,141 @@ test('enabling the log without a sheet id is a config error', () => {
     () => parseConfig(wrongType),
     (e) => e instanceof ConfigError && e.message.includes('log.enabled'),
   );
+});
+
+// Arrivals (CMB-41). The verdict row holds the prediction; this holds what
+// happened, so the two can be compared.
+
+const arrivalConfig = { ...config, log: { ...config.log, arrivals_tab: 'arrivals' } };
+const arrivedAt = new Date('2026-09-22T13:59:00Z');
+
+test('an arrival row is the arrivals header, in order, with the local clock of the route', () => {
+  const row = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'office', verdictAt: '2026-09-22T08:28:15-04:00' });
+  assert.equal(row.length, ARRIVALS_HEADER.length);
+  assert.deepEqual(row, ['2026-09-22T09:59:00-04:00', '2026-09-22', 'Tuesday', 'office', '2026-09-22T08:28:15-04:00', 'phone']);
+  // No verdict to attach to is empty, never a zero or a guess (rule 4).
+  const orphan = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'park', verdictAt: null });
+  assert.equal(orphan[ARRIVALS_HEADER.indexOf('verdict_timestamp')], '');
+});
+
+test('lastVerdictAt finds the last verdict of that local day, and nothing on a day with none', async () => {
+  const column = { values: [['2026-09-21T08:49:27-04:00'], ['2026-09-22T07:00:04-04:00'], ['2026-09-22T08:28:15-04:00']] };
+  const fetchImpl = async () => jsonResponse(200, column);
+  const found = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl });
+  assert.deepEqual(found, { ok: true, timestamp: '2026-09-22T08:28:15-04:00', error: null });
+  const none = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-20', fetchImpl });
+  assert.deepEqual(none, { ok: true, timestamp: null, error: null });
+  const broken = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl: async () => jsonResponse(500, {}) });
+  assert.equal(broken.ok, false);
+  assert.equal(broken.timestamp, null);
+});
+
+test('an arrival already logged for that place today is seen; a tab that does not exist yet is not an error', async () => {
+  const rows = { values: [['2026-09-22T09:59:00-04:00', '2026-09-22', 'Tuesday', 'office']] };
+  const seen = await arrivalLogged({
+    sheetId: 'S',
+    tab: 'arrivals',
+    token: 't',
+    localDate: '2026-09-22',
+    place: 'office',
+    fetchImpl: async () => jsonResponse(200, rows),
+  });
+  assert.deepEqual(seen, { ok: true, logged: true, error: null });
+  const otherPlace = await arrivalLogged({
+    sheetId: 'S',
+    tab: 'arrivals',
+    token: 't',
+    localDate: '2026-09-22',
+    place: 'park',
+    fetchImpl: async () => jsonResponse(200, rows),
+  });
+  assert.equal(otherPlace.logged, false);
+  const yesterday = await arrivalLogged({
+    sheetId: 'S',
+    tab: 'arrivals',
+    token: 't',
+    localDate: '2026-09-21',
+    place: 'office',
+    fetchImpl: async () => jsonResponse(200, rows),
+  });
+  assert.equal(yesterday.logged, false);
+  // "Unable to parse range" is a tab that has never been written to.
+  const fresh = await arrivalLogged({
+    sheetId: 'S',
+    tab: 'arrivals',
+    token: 't',
+    localDate: '2026-09-22',
+    place: 'office',
+    fetchImpl: async () => jsonResponse(400, { error: { message: 'Unable to parse range: arrivals!A2' } }),
+  });
+  assert.deepEqual(fresh, { ok: true, logged: false, error: null });
+});
+
+test("logArrival appends one row to the arrivals tab and carries that day's verdict with it", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const target = decodeURIComponent(url);
+    calls.push(`${init.method} ${target.replace(/^.*spreadsheets\/sheet-123/, '')}`);
+    if (init.method === 'GET' && target.includes("'arrivals'!A2:D")) return jsonResponse(200, {});
+    if (init.method === 'GET' && target.includes("'arrivals'!1:1")) return jsonResponse(200, { values: [[...ARRIVALS_HEADER]] });
+    if (init.method === 'GET') return jsonResponse(200, { values: [['2026-09-22T08:28:15-04:00']] });
+    if (init.method === 'POST' && target.includes(':append')) {
+      const body = JSON.parse(init.body);
+      calls.push(`ROW ${body.values[0].join(',')}`);
+    }
+    return jsonResponse(200, {});
+  };
+  const result = await logArrival({ now: arrivedAt, config: arrivalConfig, place: 'office', tokenProvider: async () => 'tok', fetchImpl });
+  assert.deepEqual(result, { ok: true, duplicate: false, verdictAt: '2026-09-22T08:28:15-04:00', error: null });
+  assert.ok(
+    calls.some((c) => c.startsWith('ROW 2026-09-22T09:59:00-04:00,2026-09-22,Tuesday,office,2026-09-22T08:28:15-04:00,phone')),
+    calls.join('\n'),
+  );
+  // The arrival never touches the verdicts tab except to read it.
+  assert.equal(
+    calls.some((c) => c.startsWith('POST') && c.includes('verdicts')),
+    false,
+  );
+});
+
+test('a repeat arrival on the same day is a duplicate, and writes nothing', async () => {
+  const writes = [];
+  const fetchImpl = async (url, init) => {
+    if (init.method !== 'GET') writes.push(url);
+    if (decodeURIComponent(url).includes("'arrivals'!A2:D")) {
+      return jsonResponse(200, { values: [['2026-09-22T09:10:00-04:00', '2026-09-22', 'Tuesday', 'office']] });
+    }
+    return jsonResponse(200, {});
+  };
+  const result = await logArrival({ now: arrivedAt, config: arrivalConfig, place: 'office', tokenProvider: async () => 'tok', fetchImpl });
+  assert.deepEqual(result, { ok: true, duplicate: true, verdictAt: null, error: null });
+  assert.deepEqual(writes, []);
+});
+
+test('logArrival refuses a place it does not know, and never throws on a broken write', async () => {
+  const strange = await logArrival({ config: arrivalConfig, place: 'moon', tokenProvider: async () => 'tok', fetchImpl: async () => jsonResponse(200, {}) });
+  assert.equal(strange.ok, false);
+  assert.match(strange.error, /unknown place moon/);
+  assert.deepEqual([...ARRIVAL_PLACES], ['park', 'office']);
+
+  const noSheet = await logArrival({
+    config: { ...arrivalConfig, log: { ...arrivalConfig.log, sheet_id: null } },
+    place: 'park',
+    tokenProvider: async () => 'tok',
+  });
+  assert.match(noSheet.error, /sheet id/);
+
+  const noToken = await logArrival({ config: arrivalConfig, place: 'park', tokenProvider: async () => null });
+  assert.match(noToken.error, /credentials/);
+
+  const exploded = await logArrival({
+    config: arrivalConfig,
+    place: 'park',
+    tokenProvider: async () => 'tok',
+    fetchImpl: async () => {
+      throw new TypeError('socket');
+    },
+  });
+  assert.equal(exploded.ok, false);
+  assert.equal(exploded.duplicate, false);
 });
