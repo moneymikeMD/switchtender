@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS } from './routes.js';
 import { runVerdict } from './engine.js';
-import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES } from './log.js';
+import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES } from './log.js';
 import { pushIfChanged } from './notify.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
@@ -218,6 +218,13 @@ export function createServer({
       send(res, 400, { error: `place must be one of ${ARRIVAL_PLACES.join(', ')}` });
       return;
     }
+    // What was actually done, when the phone can know it. Absent is null and
+    // stays null; the verdict's own choice is not a substitute for it.
+    const took = url.searchParams.get('took');
+    if (took !== null && !ARRIVAL_CHOICES.includes(took)) {
+      send(res, 400, { error: `took must be one of ${ARRIVAL_CHOICES.join(', ')}` });
+      return;
+    }
     const at = url.searchParams.get('at');
     // A phone clock the caller supplies is trusted only as far as being a
     // date; anything else is the moment the request landed.
@@ -228,18 +235,19 @@ export function createServer({
     }
     const when = supplied ?? now();
     try {
-      const result = await withTimeout(recordArrival({ now: when, config, place, fetchImpl }), timeoutMs);
+      const result = await withTimeout(recordArrival({ now: when, config, place, took, fetchImpl }), timeoutMs);
       if (!result.ok) logger(`arrival log failed: ${result.error}`);
       send(res, 200, {
         recorded: result.ok && !result.duplicate,
         duplicate: result.duplicate,
         place,
+        took,
         at: when.toISOString(),
         verdictAt: result.verdictAt ?? null,
       });
     } catch (error) {
       logger(`arrival error: ${error?.message ?? error}`);
-      send(res, 200, { recorded: false, duplicate: false, place, at: when.toISOString(), verdictAt: null });
+      send(res, 200, { recorded: false, duplicate: false, place, took, at: when.toISOString(), verdictAt: null });
     }
   }
 

@@ -73,7 +73,10 @@ script keeps the existing version.
 appends one row to the sheet's `arrivals` tab (`[log] arrivals_tab`) with the
 local timestamp, the place, and the timestamp of that day's last verdict row
 so the two can be joined. It takes the same `X-Switchtender-Key` header as
-`/verdict`, and `&at=<ISO 8601>` overrides the arrival time.
+`/verdict`, `&at=<ISO 8601>` overrides the arrival time, and
+`&took=drive|transit` records which option was actually taken. `took` is null
+when it is not given: what the verdict advised is not evidence that the advice
+was followed.
 
 It answers 200 whenever the request itself was sound, including when the
 sheet write failed — the phone is at a destination, not waiting on a
