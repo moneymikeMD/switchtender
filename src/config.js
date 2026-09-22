@@ -203,7 +203,17 @@ function venueEntry(v, i) {
   } else if (v.mlb_team_id !== undefined) {
     throw new ConfigError(`config: venues[${i}].mlb_team_id is only meaningful with provider = "mlb"`);
   }
-  return { name: v.name, lat: v.lat, lon: v.lon, weight: v.weight, provider, mlb_team_id };
+  let ticketmaster_venue_id = null;
+  if (v.ticketmaster_venue_id !== undefined) {
+    if (provider !== 'ticketmaster') {
+      throw new ConfigError(`config: venues[${i}].ticketmaster_venue_id is only meaningful with provider = "ticketmaster"`);
+    }
+    if (typeof v.ticketmaster_venue_id !== 'string' || v.ticketmaster_venue_id.trim() === '') {
+      throw new ConfigError(`config: venues[${i}].ticketmaster_venue_id should be a non-empty string`);
+    }
+    ticketmaster_venue_id = v.ticketmaster_venue_id.trim();
+  }
+  return { name: v.name, lat: v.lat, lon: v.lon, weight: v.weight, provider, mlb_team_id, ticketmaster_venue_id };
 }
 
 function margin(raw) {

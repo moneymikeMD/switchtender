@@ -55,8 +55,19 @@ test('getJson and getText never throw, name the failure class, add the query at 
     throw new TypeError('fetch failed: https://x.test/a?key=k');
   };
   assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: boom }), { error: 'network error (TypeError)' });
-  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => ({ ok: false, status: 503 }) }), { error: 'HTTP 503' });
-  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => undefined }), { error: 'HTTP unknown' });
+  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => ({ ok: false, status: 503 }) }), {
+    error: 'HTTP 503',
+    status: 503,
+    retryAfter: null,
+  });
+  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => undefined }), { error: 'HTTP unknown', status: null, retryAfter: null });
+  // A rate limit carries the status and the header a caller needs to wait on,
+  // and still never the URL (CMB-42).
+  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => ({ ok: false, status: 429, headers: new Headers({ 'retry-after': '2' }) }) }), {
+    error: 'HTTP 429',
+    status: 429,
+    retryAfter: '2',
+  });
   const bad = async () => ({
     ok: true,
     status: 200,

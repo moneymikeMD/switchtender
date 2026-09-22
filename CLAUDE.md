@@ -134,6 +134,12 @@ satisfy a human-authored 1000-char rule.
 | Rail alerts | WMATA Incidents (CMB-35), line-matched to `[transit] lines` | `TRANSIT_API_KEY` |
 | Planned track work | Scrape of wmata.com/ride/planned-track-work.html, lines from `[transit]` | none |
 
+Ticketmaster's public quota is **2 requests a second** (and 5000 a day), which
+is easy to trip: resolving every venue name to a vendor id on every run spent
+one request per venue and returned HTTP 429 (CMB-42). Set
+`ticketmaster_venue_id` on a `[[venues]]` entry to skip that lookup; a venue
+without one is still resolved, and the run reports the id it found.
+
 Rejected, with the evidence in the tickets: MapQuest (CMB-22), HERE, Bing,
 DDOT MajorEvent (no data after 2017), HSEMA road closures (no data after 2023),
 WMATA GTFS-RT as a source of advance notice (CMB-27). Motorcades are a known
