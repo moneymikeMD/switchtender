@@ -140,6 +140,32 @@ The arrival time may also be supplied as `&at=<ISO 8601>` when the macro
 queues a request offline and sends it late. Without it the server uses the
 moment the request landed.
 
+### Saying which option was actually taken
+
+`&took=drive|transit` records what was done, which is not the same as what the
+verdict advised: the advice can be ignored, and a row that cannot say which
+option was taken cannot be scored against either estimate. Left out, the
+column stays empty, and an empty one is honest — a guess would look like
+evidence.
+
+The phone can know this without being asked. Park-and-ride always passes
+through the lot, so the park fence firing is the fact that decides it:
+
+1. In the park macro, before the HTTP Request, add **Variables** > **Set
+   Variable**: a global string `st_took`, value `transit`. Send the park
+   arrival with `&took=transit`.
+2. In the office macro, send `&took={v=st_took}` (use the magic-text button;
+   see the dictionary note below for why the braces matter). Then add a
+   second **Set Variable** action after it that clears `st_took` back to
+   `drive`, ready for tomorrow.
+3. Keep the default value of `st_took` as `drive`. A morning with no park
+   arrival is a morning that drove through, which is exactly what the
+   default then reports.
+
+A morning that broke the pattern — parked and then gave up and drove, a lift
+from someone else — is worth correcting by hand in the sheet rather than
+modelling in the macro.
+
 ## Geofence radius
 
 Start at **400 m**. Play services geofences fire on the next location fix

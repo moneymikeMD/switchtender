@@ -455,7 +455,15 @@ export async function logVerdict({
 
 export const ARRIVAL_PLACES = Object.freeze(['park', 'office']);
 
-export const ARRIVALS_HEADER = Object.freeze(['timestamp', 'local_date', 'weekday', 'place', 'verdict_timestamp', 'source']);
+// What the owner actually did, which is not what the verdict advised: the
+// advice can be ignored, and a row that cannot say which option was taken
+// cannot be scored against either estimate.
+export const ARRIVAL_CHOICES = Object.freeze(['drive', 'transit']);
+
+// Append only, like EXTRA_COLUMNS: choice_taken sits at the end because the
+// live tab was written before it existed, and ensureHeader extends a header
+// that is a prefix of this one.
+export const ARRIVALS_HEADER = Object.freeze(['timestamp', 'local_date', 'weekday', 'place', 'verdict_timestamp', 'source', 'choice_taken']);
 
 const TIMESTAMP_COLUMN = columnLetter(HEADER.indexOf('timestamp'));
 
@@ -495,9 +503,9 @@ export async function arrivalLogged({ sheetId, tab, token, localDate, place, fet
 }
 
 /** Build one arrivals row, aligned to ARRIVALS_HEADER. */
-export function buildArrivalRow({ now = new Date(), timeZone = 'UTC', place, verdictAt = null, source = 'phone' }) {
+export function buildArrivalRow({ now = new Date(), timeZone = 'UTC', place, verdictAt = null, source = 'phone', took = null }) {
   const t = localTime(now, timeZone);
-  return [t.timestamp, t.localDate, t.weekday, place, verdictAt, source].map(cell);
+  return [t.timestamp, t.localDate, t.weekday, place, verdictAt, source, took].map(cell);
 }
 
 /**
@@ -505,13 +513,25 @@ export function buildArrivalRow({ now = new Date(), timeZone = 'UTC', place, ver
  * raised: the phone is at a destination, not waiting on a spreadsheet.
  * Returns { ok, duplicate, verdictAt, error }.
  */
-export async function logArrival({ now = new Date(), config, place, source = 'phone', tokenProvider = tokenFromEnvOrMetadata, fetchImpl = fetch, signal }) {
+export async function logArrival({
+  now = new Date(),
+  config,
+  place,
+  took = null,
+  source = 'phone',
+  tokenProvider = tokenFromEnvOrMetadata,
+  fetchImpl = fetch,
+  signal,
+}) {
   try {
     const sheetId = config?.log?.sheet_id;
     const tab = config?.log?.arrivals_tab ?? 'arrivals';
     const verdictsTab = config?.log?.sheet_tab ?? 'verdicts';
     if (!sheetId) return { ok: false, duplicate: false, verdictAt: null, error: 'no sheet id configured' };
     if (!ARRIVAL_PLACES.includes(place)) return { ok: false, duplicate: false, verdictAt: null, error: `unknown place ${place}` };
+    // Unknown is null, never a default (rule 4): a guessed option is worse
+    // than an unscored row, because it looks like evidence.
+    if (took !== null && !ARRIVAL_CHOICES.includes(took)) return { ok: false, duplicate: false, verdictAt: null, error: `unknown choice ${took}` };
 
     const token = await tokenProvider({ fetchImpl, signal });
     if (!token) return { ok: false, duplicate: false, verdictAt: null, error: 'no credentials' };
@@ -527,7 +547,7 @@ export async function logArrival({ now = new Date(), config, place, source = 'ph
     if (!header.ok) return { ok: false, duplicate: false, verdictAt: null, error: header.error ?? `header check failed (${header.status})` };
 
     const verdict = await lastVerdictAt({ ...target, tab: verdictsTab, localDate });
-    const row = buildArrivalRow({ now, timeZone, place, verdictAt: verdict.timestamp, source });
+    const row = buildArrivalRow({ now, timeZone, place, verdictAt: verdict.timestamp, source, took });
     const appended = await appendRow(row, target);
     if (!appended.ok) return { ok: false, duplicate: false, verdictAt: null, error: appended.error ?? `append failed (${appended.status})` };
     return { ok: true, duplicate: false, verdictAt: verdict.timestamp, error: null };

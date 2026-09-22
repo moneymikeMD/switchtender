@@ -19,6 +19,7 @@ import {
   getLastChoice,
   ARRIVALS_HEADER,
   ARRIVAL_PLACES,
+  ARRIVAL_CHOICES,
   buildArrivalRow,
   logArrival,
   lastVerdictAt,
@@ -436,9 +437,13 @@ const arrivalConfig = { ...config, log: { ...config.log, arrivals_tab: 'arrivals
 const arrivedAt = new Date('2026-09-22T13:59:00Z');
 
 test('an arrival row is the arrivals header, in order, with the local clock of the route', () => {
-  const row = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'office', verdictAt: '2026-09-22T08:28:15-04:00' });
+  const row = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'office', verdictAt: '2026-09-22T08:28:15-04:00', took: 'transit' });
   assert.equal(row.length, ARRIVALS_HEADER.length);
-  assert.deepEqual(row, ['2026-09-22T09:59:00-04:00', '2026-09-22', 'Tuesday', 'office', '2026-09-22T08:28:15-04:00', 'phone']);
+  assert.deepEqual(row, ['2026-09-22T09:59:00-04:00', '2026-09-22', 'Tuesday', 'office', '2026-09-22T08:28:15-04:00', 'phone', 'transit']);
+  // What was done is null until something says so: the verdict's advice is
+  // not evidence that the advice was followed (CMB-41).
+  const silent = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'office', verdictAt: null });
+  assert.equal(silent[ARRIVALS_HEADER.indexOf('choice_taken')], '');
   // No verdict to attach to is empty, never a zero or a guess (rule 4).
   const orphan = buildArrivalRow({ now: arrivedAt, timeZone: 'America/New_York', place: 'park', verdictAt: null });
   assert.equal(orphan[ARRIVALS_HEADER.indexOf('verdict_timestamp')], '');
@@ -511,10 +516,10 @@ test("logArrival appends one row to the arrivals tab and carries that day's verd
     }
     return jsonResponse(200, {});
   };
-  const result = await logArrival({ now: arrivedAt, config: arrivalConfig, place: 'office', tokenProvider: async () => 'tok', fetchImpl });
+  const result = await logArrival({ now: arrivedAt, config: arrivalConfig, place: 'office', took: 'transit', tokenProvider: async () => 'tok', fetchImpl });
   assert.deepEqual(result, { ok: true, duplicate: false, verdictAt: '2026-09-22T08:28:15-04:00', error: null });
   assert.ok(
-    calls.some((c) => c.startsWith('ROW 2026-09-22T09:59:00-04:00,2026-09-22,Tuesday,office,2026-09-22T08:28:15-04:00,phone')),
+    calls.some((c) => c.startsWith('ROW 2026-09-22T09:59:00-04:00,2026-09-22,Tuesday,office,2026-09-22T08:28:15-04:00,phone,transit')),
     calls.join('\n'),
   );
   // The arrival never touches the verdicts tab except to read it.
@@ -543,6 +548,17 @@ test('logArrival refuses a place it does not know, and never throws on a broken 
   assert.equal(strange.ok, false);
   assert.match(strange.error, /unknown place moon/);
   assert.deepEqual([...ARRIVAL_PLACES], ['park', 'office']);
+
+  const strangeChoice = await logArrival({
+    config: arrivalConfig,
+    place: 'office',
+    took: 'helicopter',
+    tokenProvider: async () => 'tok',
+    fetchImpl: async () => jsonResponse(200, {}),
+  });
+  assert.equal(strangeChoice.ok, false);
+  assert.match(strangeChoice.error, /unknown choice helicopter/);
+  assert.deepEqual([...ARRIVAL_CHOICES], ['drive', 'transit']);
 
   const noSheet = await logArrival({
     config: { ...arrivalConfig, log: { ...arrivalConfig.log, sheet_id: null } },

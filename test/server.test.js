@@ -291,6 +291,7 @@ test('/arrived records the arrival and names the verdict it belongs to', async (
     recorded: true,
     duplicate: false,
     place: 'park',
+    took: null,
     at: '2026-09-16T12:00:00.000Z',
     verdictAt: '2026-09-16T08:30:00-04:00',
   });
@@ -336,4 +337,28 @@ test('a failed or stalled sheet write still answers the phone, and says so in th
   const slow = await fetch(`${stalled.base}/arrived?place=park`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
   assert.equal(slow.status, 200);
   assert.equal((await slow.json()).recorded, false);
+});
+
+test('/arrived carries what was actually done, and refuses a mode it does not know', async () => {
+  const seen = [];
+  const { base } = await start({
+    recordArrival: async (args) => {
+      seen.push(args.took);
+      return arrivedOk();
+    },
+  });
+  const took = await fetch(`${base}/arrived?place=office&took=transit`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(took.status, 200);
+  assert.equal((await took.json()).took, 'transit');
+
+  // Absent stays null. The verdict's own advice is not evidence it was
+  // followed, so nothing fills this in on the caller's behalf (CMB-41).
+  const quiet = await fetch(`${base}/arrived?place=office`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal((await quiet.json()).took, null);
+  assert.deepEqual(seen, ['transit', null]);
+
+  const nonsense = await fetch(`${base}/arrived?place=office&took=helicopter`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } });
+  assert.equal(nonsense.status, 400);
+  assert.match((await nonsense.json()).error, /took must be one of drive, transit/);
+  assert.equal(seen.length, 2);
 });
