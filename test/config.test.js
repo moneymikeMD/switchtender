@@ -231,3 +231,20 @@ test('a walk that is negative or not a number is rejected; the old key names are
     /route\.destination has unknown key "colour"; a place takes lat, lon, label, addl_walk_mins/,
   );
 });
+
+test('a ticketing venue may carry its vendor id, and only a ticketing venue may (CMB-42)', () => {
+  const withId = exampleText.replace(/^name = "TD Garden"$/m, 'name = "TD Garden"\nticketmaster_venue_id = "  KovZpZA7AAEA  "');
+  const [garden] = parseConfig(withId).venues;
+  assert.equal(garden.ticketmaster_venue_id, 'KovZpZA7AAEA');
+  // Absent is null, never an empty string that would be sent as an id.
+  assert.equal(parseConfig(exampleText).venues[0].ticketmaster_venue_id, null);
+  for (const bad of ['ticketmaster_venue_id = ""', 'ticketmaster_venue_id = 12', 'ticketmaster_venue_id = "   "']) {
+    assert.throws(() => parseConfig(exampleText.replace(/^name = "TD Garden"$/m, `name = "TD Garden"\n${bad}`)), ConfigError, bad);
+  }
+  // The ballpark reads MLB, so a ticketing id there is a mistake, like
+  // mlb_team_id on a ticketing venue.
+  assert.throws(
+    () => parseConfig(exampleText.replace(/^name = "Fenway Park"$/m, 'name = "Fenway Park"\nticketmaster_venue_id = "KovZpZA7AAEA"')),
+    (e) => e instanceof ConfigError && e.message.includes('only meaningful with provider = "ticketmaster"'),
+  );
+});

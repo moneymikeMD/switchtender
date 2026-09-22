@@ -20,6 +20,9 @@ import {
   EVENING_AFTER_MS,
   SCORE_SATURATION_WEIGHT,
   VENUE_MATCH_METRES,
+  retryDelayMs,
+  RETRY_WAIT_MS,
+  RETRY_MAX_WAIT_MS,
   EventsError,
 } from '../src/events.js';
 import { scheduleRequest, normaliseGames, fetchMlbGames, nickname, SCHEDULE_ENDPOINT, MlbError } from '../src/mlb.js';
@@ -712,4 +715,108 @@ test('the deadline rides along on every request, and a fetch that throws synchro
     { now: noon16 },
   );
   assert.equal(broken.unknown, true);
+});
+
+// CMB-42. The vendor's public quota is 2 requests a second, and resolving
+// every venue on every run spent one request per venue to rediscover an id
+// that does not change.
+
+test('a configured venue id skips its lookup, so a fully configured set costs one request', async () => {
+  const fetchImpl = stubFetch();
+  const configured = {
+    ...config,
+    venues: [
+      { name: 'Audi Field', lat: 38.868, lon: -77.0136, weight: 0.5, ticketmaster_venue_id: 'KovZ917A8Q0' },
+      { name: 'The Anthem', lat: 38.8801, lon: -77.0262, weight: 1.0, ticketmaster_venue_id: 'KovZ917A3Y7' },
+    ],
+  };
+  const result = await fetchEvents(configured, 'k', fetchImpl, { now: noon16 });
+  assert.equal(result.unknown, false);
+  assert.equal(result.partial, false);
+  assert.deepEqual(result.resolved, ['Audi Field', 'The Anthem']);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].pathname.endsWith('/events.json'), true);
+  assert.equal(fetchImpl.calls[0].searchParams.get('venueId'), 'KovZ917A8Q0,KovZ917A3Y7');
+  // Nothing was discovered, because nothing needed discovering.
+  assert.deepEqual(result.discovered, []);
+});
+
+test('a venue resolved by lookup reports its id so it can be put in config', async () => {
+  const one = { ...config, venues: [{ name: 'The Anthem', lat: 38.8801, lon: -77.0262, weight: 1.0 }] };
+  const result = await fetchEvents(one, 'k', stubFetch(), { now: noon16 });
+  assert.deepEqual(result.discovered, [{ name: 'The Anthem', id: 'KovZ917A3Y7' }]);
+});
+
+// A fetch stub whose venue lookups fail with `status` for one keyword only.
+// Everything else answers from the recorded fixtures.
+function stubFetchFailing(keyword, { status = 429, retryAfter = null } = {}) {
+  const calls = [];
+  const inner = stubFetch();
+  const fn = async (url, init) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('/venues.json') && u.searchParams.get('keyword') === keyword) {
+      calls.push(u);
+      return { ok: false, status, headers: new Headers(retryAfter === null ? {} : { 'retry-after': retryAfter }) };
+    }
+    return inner(url, init);
+  };
+  fn.calls = calls;
+  fn.all = inner.calls;
+  return fn;
+}
+
+test('one venue lost to a rate limit does not discard the venues that answered', async () => {
+  const fetchImpl = stubFetchFailing('Audi Field');
+  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async () => {} });
+  // The evening event at The Anthem still lands, so the signal is real.
+  assert.equal(result.unknown, false);
+  assert.equal(result.evening, 1);
+  assert.ok(result.resolved.includes('The Anthem'));
+  assert.ok(result.unresolved.includes('Audi Field'));
+  // ...and the venue nobody could ask about makes the answer partial, so a
+  // zero from the rest would still read as unknown (rule 4).
+  assert.equal(result.partial, true);
+  assert.match(
+    result.notes.find((n) => n.startsWith('ticketing source degraded')),
+    /venue lookup HTTP 429/,
+  );
+});
+
+test('a rate-limited lookup is retried once, waiting the Retry-After it was given', async () => {
+  const waits = [];
+  const sleep = async (ms) => {
+    waits.push(ms);
+  };
+  const fetchImpl = stubFetchFailing('Audi Field', { retryAfter: '1' });
+  await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep });
+  // Two attempts at the rate-limited venue, and no third.
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(waits, [1000]);
+});
+
+test('a refusal that is not a rate limit is not retried', async () => {
+  const waits = [];
+  const fetchImpl = stubFetchFailing('Audi Field', { status: 503 });
+  await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async (ms) => waits.push(ms) });
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.deepEqual(waits, []);
+});
+
+test('the retry wait comes from Retry-After when it is a number of seconds, capped, and defaults otherwise', () => {
+  assert.equal(retryDelayMs('1'), 1000);
+  assert.equal(retryDelayMs('0'), 0);
+  assert.equal(retryDelayMs(String(RETRY_MAX_WAIT_MS / 1000 + 60)), RETRY_MAX_WAIT_MS);
+  // An HTTP-date, an empty header and no header at all all fall back.
+  assert.equal(retryDelayMs('Wed, 21 Oct 2026 07:28:00 GMT'), RETRY_WAIT_MS);
+  assert.equal(retryDelayMs(''), RETRY_WAIT_MS);
+  assert.equal(retryDelayMs(null), RETRY_WAIT_MS);
+  assert.equal(retryDelayMs('-5'), RETRY_WAIT_MS);
+});
+
+test('every ticketed venue lost to a rate limit is unknown outright, not a quiet zero', async () => {
+  const fetchImpl = stubFetch({ status: 429 });
+  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async () => {} });
+  assert.equal(result.unknown, true);
+  assert.equal(result.count, null);
+  assert.match(result.reasons[0], /venue lookup HTTP 429/);
 });

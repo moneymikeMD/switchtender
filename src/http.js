@@ -27,7 +27,19 @@ async function get(target, accept, { fetchImpl = fetch, query = {}, headers = {}
   } catch (cause) {
     return { error: `network error (${cause?.name ?? 'Error'})` };
   }
-  if (!response?.ok) return { error: `HTTP ${response?.status ?? 'unknown'}` };
+  // status and retryAfter ride alongside the message so a caller can tell a
+  // rate limit from any other refusal. Neither can carry the URL, and so the
+  // key, which the message itself must never do either.
+  if (!response?.ok) {
+    const status = typeof response?.status === 'number' ? response.status : null;
+    let retryAfter = null;
+    try {
+      retryAfter = response?.headers?.get?.('retry-after') ?? null;
+    } catch {
+      retryAfter = null;
+    }
+    return { error: `HTTP ${status ?? 'unknown'}`, status, retryAfter };
+  }
   return { response };
 }
 

@@ -136,6 +136,13 @@ max_lat = 42.4100
 # the club's schedule from MLB's keyless stats API instead, and needs the
 # club's numeric mlb_team_id. It replaces the ticketing source for that venue
 # rather than sitting beside it.
+#
+# ticketmaster_venue_id is optional and worth setting. Without it every run
+# spends one request resolving the name to a vendor id that never changes,
+# and the vendor allows only two requests a second (CMB-42). Leave it out
+# once, read the id the run reports for the venue, then paste it in:
+#
+#   ticketmaster_venue_id = "<the id the run reports for this venue>"
 
 [[venues]]
 name = "TD Garden"

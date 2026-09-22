@@ -129,6 +129,9 @@ async function main() {
   );
   if (events) {
     console.log(events.unknown ? `  venue events unknown (${events.reasons[0]})` : `  venue events ${events.evening} this evening of ${events.count} today`);
+    for (const v of events.discovered ?? []) {
+      console.log(`  ${v.name}: ticketmaster_venue_id = "${v.id}" (set it in config to skip a lookup)`);
+    }
   }
   if (trackwork) {
     console.log(
