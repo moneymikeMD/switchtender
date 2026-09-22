@@ -228,11 +228,14 @@ shared_secret_value="$(op_value "$shared_path")"
 scheduler_target="${url}/verdict?notify=1"
 if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --quiet >/dev/null 2>&1; then
   log "updating Cloud Scheduler job ${SCHEDULER_JOB}"
+  # update takes --update-headers; only create takes --headers. With the
+  # wrong one gcloud rejects the call AND echoes every argument, which puts
+  # the shared secret in the output (CLAUDE.md rule 7).
   gcloud scheduler jobs update http "$SCHEDULER_JOB" \
     --location "$REGION" \
     --uri "$scheduler_target" \
     --http-method GET \
-    --headers "X-Switchtender-Key=${shared_secret_value}" \
+    --update-headers "X-Switchtender-Key=${shared_secret_value}" \
     --schedule "0 7 * * 1-5" \
     --time-zone "America/New_York" \
     --quiet >/dev/null
