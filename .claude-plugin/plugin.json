@@ -6,7 +6,7 @@
   "homepage": "https://github.com/moneymikeMD/switchtender",
   "license": "UNLICENSED",
   "dependencies": [
-    { "name": "work-order", "version": "^0.1" },
-    { "name": "work-order-jira", "version": "^0.2" }
+    { "name": "work-order", "version": "^1.6.0" },
+    { "name": "work-order-jira", "version": "^0.5.1" }
   ]
 }
