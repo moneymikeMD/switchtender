@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/moneymikeMD/switchtender/compare/v1.3.0...v1.3.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* pace Ticketmaster lookups and record 429 rate-limit headers (CMB-42) ([0dd00ac](https://github.com/moneymikeMD/switchtender/commit/0dd00acfe75d83ebec458ad62ecbec98bd175cc0))
+* pace Ticketmaster lookups and record 429 rate-limit headers (CMB-42) ([c9fd6b6](https://github.com/moneymikeMD/switchtender/commit/c9fd6b6011e67a86090cf58d2e701d3cc4c08629))
+
 ## [1.3.0](https://github.com/moneymikeMD/switchtender/compare/v1.2.0...v1.3.0) (2026-09-23)
 
 
