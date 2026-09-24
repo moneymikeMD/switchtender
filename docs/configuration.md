@@ -132,7 +132,19 @@ document exists to prevent.
 ### `[[venues]]`
 
 An allowlist, repeated once per venue, each with `name`, `lat`, `lon` and
-`weight`.
+`weight`. A Ticketmaster venue may also carry `ticketmaster_venue_id`; a
+ballpark carries `provider = "mlb"` and `mlb_team_id` instead.
+
+`ticketmaster_venue_id` is optional and worth setting (CMB-42). The vendor
+allows two requests a second, and without the id every run spends one
+request per venue resolving a name to an id that never changes. Add the venue
+without it once, read the id the run prints for it, then paste it in and keep
+`name`, `lat` and `lon` beside it as the human record of what the id means.
+With every venue's id set, a run makes one Ticketmaster request. Lookups that
+remain are spaced at least half a second apart, a rate-limited call is retried
+once (honouring `Retry-After`, inside the run's deadline), and a venue whose
+lookup still fails is lost alone: the others keep answering and the run notes
+which one is missing, with whatever rate-limit headers the vendor sent.
 
 It is an allowlist rather than a radius search on purpose. Distance to the
 destination turns out to be the wrong metric. A twenty-thousand-seat arena

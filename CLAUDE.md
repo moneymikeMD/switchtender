@@ -138,7 +138,10 @@ Ticketmaster's public quota is **2 requests a second** (and 5000 a day), which
 is easy to trip: resolving every venue name to a vendor id on every run spent
 one request per venue and returned HTTP 429 (CMB-42). Set
 `ticketmaster_venue_id` on a `[[venues]]` entry to skip that lookup; a venue
-without one is still resolved, and the run reports the id it found.
+without one is still resolved, and the run reports the id it found. Lookups
+that remain are paced at half a second apart, a 429 is retried once honouring
+`Retry-After`, and the reason logged for a 429 carries the vendor's
+rate-limit headers, never the URL.
 
 Rejected, with the evidence in the tickets: MapQuest (CMB-22), HERE, Bing,
 DDOT MajorEvent (no data after 2017), HSEMA road closures (no data after 2023),
