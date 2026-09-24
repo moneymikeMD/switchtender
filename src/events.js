@@ -343,6 +343,28 @@ export const RETRY_MAX_WAIT_MS = 2000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Two requests a second means one every half second. Every Ticketmaster call
+// in a run passes through one pacer, so a venue still waiting for its id
+// cannot burst past the quota on the way to the events call. Timestamps come
+// from an injected clock, so the spacing is asserted, never slept, in tests.
+export const MIN_SPACING_MS = 500;
+
+/**
+ * A pacer: `pace()` resolves once at least MIN_SPACING_MS has passed since the
+ * previous call went out, sleeping the remainder if not. `clock` returns ms.
+ */
+export function makePacer({ clock = Date.now, sleep = wait, spacingMs = MIN_SPACING_MS } = {}) {
+  let last = null;
+  return {
+    async pace() {
+      const now = clock();
+      const due = last === null ? now : last + spacingMs;
+      if (now < due) await sleep(due - now);
+      last = Math.max(clock(), due);
+    },
+  };
+}
+
 /**
  * How long to wait before retrying a 429. `retryAfter` is the header value: a
  * count of seconds becomes that wait, capped; anything else (absent, or an
@@ -356,12 +378,31 @@ export function retryDelayMs(retryAfter) {
   return RETRY_WAIT_MS;
 }
 
-async function askTicketed(request, apiKey, fetchImpl, { signal, sleep }) {
+/**
+ * The reason for a refused call, with whatever the vendor said about its
+ * limit: "HTTP 429 (retry-after=1, x-ratelimit-remaining=0)". Header values
+ * are counts and seconds, never a URL, so a reason stays safe to log.
+ */
+export function describeRefusal({ error, retryAfter = null, rateLimit = null }) {
+  const said = [];
+  if (retryAfter !== null && retryAfter !== '') said.push(`retry-after=${retryAfter}`);
+  for (const [name, value] of Object.entries(rateLimit ?? {})) said.push(`${name}=${value}`);
+  return said.length === 0 ? error : `${error} (${said.join(', ')})`;
+}
+
+async function askOnce(request, apiKey, fetchImpl, { signal, sleep, pacer }) {
+  await pacer.pace();
   const first = await getTicketed(request, apiKey, fetchImpl, signal);
   if (first.status !== RATE_LIMIT_STATUS || signal?.aborted) return first;
   await sleep(retryDelayMs(first.retryAfter));
   if (signal?.aborted) return first;
+  await pacer.pace();
   return getTicketed(request, apiKey, fetchImpl, signal);
+}
+
+async function askTicketed(request, apiKey, fetchImpl, options) {
+  const answer = await askOnce(request, apiKey, fetchImpl, options);
+  return answer.error ? { ...answer, error: describeRefusal(answer) } : answer;
 }
 
 /**
@@ -372,7 +413,8 @@ async function askTicketed(request, apiKey, fetchImpl, { signal, sleep }) {
  * `unresolved`, and one whose own lookup failed lands there too with its
  * reason in `failures`, so the venues that did answer still count.
  */
-async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, signal, sleep }) {
+async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, signal, sleep, clock }) {
+  const pacer = makePacer({ clock, sleep });
   const resolved = [];
   const unresolved = [];
   const discovered = [];
@@ -395,7 +437,7 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, sig
       lost(venue, cause.message);
       continue;
     }
-    const { data, error } = await askTicketed(request, apiKey, fetchImpl, { signal, sleep });
+    const { data, error } = await askTicketed(request, apiKey, fetchImpl, { signal, sleep, pacer });
     if (error) {
       lost(venue, `venue lookup ${error}`);
       continue;
@@ -425,7 +467,7 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, sig
   } catch (cause) {
     return { ...bare, error: cause.message };
   }
-  const { data, error } = await askTicketed(request, apiKey, fetchImpl, { signal, sleep });
+  const { data, error } = await askTicketed(request, apiKey, fetchImpl, { signal, sleep, pacer });
   if (error) return { ...bare, error };
   const events = normaliseEvents(data);
   if (events === null) return { ...bare, error: 'response had no event list' };
@@ -440,7 +482,9 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, sig
  * source that was skipped or failed, kept apart from `reasons` because the
  * verdict speaks `reasons`), `discovered` (venues resolved by a lookup this
  * run, so the id can be put in config and the lookup dropped) and `partial`
- * (true when some source did not answer) added.
+ * (true when some source did not answer) added. `sleep` and `clock` are the
+ * wait and the ms clock the rate-limit retry and the request pacer use;
+ * tests inject both so nothing here ever really waits.
  *
  * Never throws: this is an optional signal, and losing it is a lower
  * confidence, not a missing verdict. No reason ever carries the key or a URL.
@@ -455,15 +499,15 @@ async function fetchTicketmaster(venues, apiKey, fetchImpl, { now, timeZone, sig
  * keyless mlb provider is the point of the split: with no key and an mlb
  * venue, the ballpark still answers, and a game there is still heard.
  */
-export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now(), signal, sleep = wait } = {}) {
+export async function fetchEvents(config, apiKey, fetchImpl = fetch, { now = Date.now(), signal, sleep = wait, clock = Date.now } = {}) {
   try {
-    return await fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep });
+    return await fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep, clock });
   } catch (cause) {
     return { ...unknown(`unexpected error (${cause?.name ?? 'Error'})`), resolved: [], unresolved: [], notes: [], discovered: [], partial: false };
   }
 }
 
-async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep }) {
+async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep, clock }) {
   const venues = Array.isArray(config?.venues) ? config.venues : [];
   const ticketed = venues.filter((v) => providerOf(v) === 'ticketmaster');
   const ballparks = venues.filter((v) => providerOf(v) === 'mlb');
@@ -476,8 +520,8 @@ async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep 
   if (!timeZone || departureInstant(now, timeZone, eveningDeparture) === null) {
     return bare(unknown('no assumed evening departure'));
   }
-  const clock = { now, timeZone, eveningDeparture };
-  if (venues.length === 0) return bare(assessEvents([], [], clock));
+  const when = { now, timeZone, eveningDeparture };
+  if (venues.length === 0) return bare(assessEvents([], [], when));
 
   const events = [];
   const matched = [];
@@ -494,7 +538,7 @@ async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep 
       notes.push('ticketing source skipped: no EVENTS_API_KEY');
       failures.push('no EVENTS_API_KEY');
     } else {
-      const tm = await fetchTicketmaster(ticketed, apiKey, fetchImpl, { ...clock, signal, sleep });
+      const tm = await fetchTicketmaster(ticketed, apiKey, fetchImpl, { ...when, signal, sleep, clock });
       unresolved.push(...tm.unresolved);
       discovered.push(...tm.discovered);
       if (tm.error) {
@@ -533,7 +577,7 @@ async function fetchEventsInner(config, apiKey, fetchImpl, { now, signal, sleep 
   }
 
   const partial = failures.length > 0;
-  const assessment = answered === 0 ? null : assessEvents(events, matched, clock);
+  const assessment = answered === 0 ? null : assessEvents(events, matched, when);
   if (assessment === null || (partial && assessment.evening === 0)) {
     const why = failures[0] ?? 'no configured venue matched a vendor record';
     const shape = unknown(why);

@@ -143,12 +143,13 @@ max_lat = 42.4100
 # ticketmaster_venue_id is optional and worth setting. Without it every run
 # spends one request resolving the name to a vendor id that never changes,
 # and the vendor allows only two requests a second (CMB-42). Leave it out
-# once, read the id the run reports for the venue, then paste it in:
-#
-#   ticketmaster_venue_id = "<the id the run reports for this venue>"
+# once, read the id the run reports for the venue, then paste it in. Keep
+# name, lat and lon beside it: they are the human record of what the id is.
+# A vendor venue id is public data, so the one below is TD Garden's real id.
 
 [[venues]]
 name = "TD Garden"
+ticketmaster_venue_id = "KovZpa2gne"
 lat = 42.3662
 lon = -71.0621
 weight = 1.0

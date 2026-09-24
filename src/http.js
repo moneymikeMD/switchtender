@@ -27,20 +27,33 @@ async function get(target, accept, { fetchImpl = fetch, query = {}, headers = {}
   } catch (cause) {
     return { error: `network error (${cause?.name ?? 'Error'})` };
   }
-  // status and retryAfter ride alongside the message so a caller can tell a
-  // rate limit from any other refusal. Neither can carry the URL, and so the
-  // key, which the message itself must never do either.
-  if (!response?.ok) {
-    const status = typeof response?.status === 'number' ? response.status : null;
-    let retryAfter = null;
-    try {
-      retryAfter = response?.headers?.get?.('retry-after') ?? null;
-    } catch {
-      retryAfter = null;
-    }
-    return { error: `HTTP ${status ?? 'unknown'}`, status, retryAfter };
-  }
+  if (!response?.ok) return refusal(response);
   return { response };
+}
+
+// The rate-limit headers a vendor may send, lowercased. Their values are
+// counts and seconds, never a URL, so they are safe to carry into a reason.
+const RATE_LIMIT_HEADER = /^(x-)?rate-?limit/;
+
+/**
+ * The failure shape for a non-2xx response: `status`, `retryAfter` (the
+ * Retry-After header or null) and `rateLimit` (every rate-limit header, or
+ * null when there are none). Neither the message nor any field carries the
+ * URL, which is where the key is.
+ */
+export function refusal(response) {
+  const status = typeof response?.status === 'number' ? response.status : null;
+  let retryAfter = null;
+  const rateLimit = {};
+  try {
+    retryAfter = response?.headers?.get?.('retry-after') ?? null;
+    response?.headers?.forEach?.((value, name) => {
+      if (RATE_LIMIT_HEADER.test(String(name).toLowerCase())) rateLimit[String(name).toLowerCase()] = String(value);
+    });
+  } catch {
+    retryAfter = null;
+  }
+  return { error: `HTTP ${status ?? 'unknown'}`, status, retryAfter, rateLimit: Object.keys(rateLimit).length > 0 ? rateLimit : null };
 }
 
 /**

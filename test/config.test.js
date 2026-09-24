@@ -233,13 +233,18 @@ test('a walk that is negative or not a number is rejected; the old key names are
 });
 
 test('a ticketing venue may carry its vendor id, and only a ticketing venue may (CMB-42)', () => {
-  const withId = exampleText.replace(/^name = "TD Garden"$/m, 'name = "TD Garden"\nticketmaster_venue_id = "  KovZpZA7AAEA  "');
+  // The example carries TD Garden's real, public id; strip it to test the bare case.
+  const idLine = /^ticketmaster_venue_id = "KovZpa2gne"\n/m;
+  assert.match(exampleText, idLine);
+  assert.equal(parseConfig(exampleText).venues[0].ticketmaster_venue_id, 'KovZpa2gne');
+  const bare = exampleText.replace(idLine, '');
+  const withId = bare.replace(/^name = "TD Garden"$/m, 'name = "TD Garden"\nticketmaster_venue_id = "  KovZpZA7AAEA  "');
   const [garden] = parseConfig(withId).venues;
   assert.equal(garden.ticketmaster_venue_id, 'KovZpZA7AAEA');
   // Absent is null, never an empty string that would be sent as an id.
-  assert.equal(parseConfig(exampleText).venues[0].ticketmaster_venue_id, null);
+  assert.equal(parseConfig(bare).venues[0].ticketmaster_venue_id, null);
   for (const bad of ['ticketmaster_venue_id = ""', 'ticketmaster_venue_id = 12', 'ticketmaster_venue_id = "   "']) {
-    assert.throws(() => parseConfig(exampleText.replace(/^name = "TD Garden"$/m, `name = "TD Garden"\n${bad}`)), ConfigError, bad);
+    assert.throws(() => parseConfig(bare.replace(/^name = "TD Garden"$/m, `name = "TD Garden"\n${bad}`)), ConfigError, bad);
   }
   // The ballpark reads MLB, so a ticketing id there is a mistake, like
   // mlb_team_id on a ticketing venue.

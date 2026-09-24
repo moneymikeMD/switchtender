@@ -59,15 +59,29 @@ test('getJson and getText never throw, name the failure class, add the query at 
     error: 'HTTP 503',
     status: 503,
     retryAfter: null,
+    rateLimit: null,
   });
-  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => undefined }), { error: 'HTTP unknown', status: null, retryAfter: null });
-  // A rate limit carries the status and the header a caller needs to wait on,
-  // and still never the URL (CMB-42).
-  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => ({ ok: false, status: 429, headers: new Headers({ 'retry-after': '2' }) }) }), {
+  assert.deepEqual(await getJson('https://x.test/a', { fetchImpl: async () => undefined }), {
+    error: 'HTTP unknown',
+    status: null,
+    retryAfter: null,
+    rateLimit: null,
+  });
+  // A rate limit carries the status, the header a caller needs to wait on
+  // and every rate-limit header the vendor sent, and still never the URL
+  // (CMB-42). Header names come back lowercased whatever the vendor's case.
+  const limited = async () => ({
+    ok: false,
+    status: 429,
+    headers: new Headers({ 'Retry-After': '2', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Limit': '2', 'Content-Type': 'text/plain' }),
+  });
+  assert.deepEqual(await getJson('https://x.test/a?key=k', { fetchImpl: limited }), {
     error: 'HTTP 429',
     status: 429,
     retryAfter: '2',
+    rateLimit: { 'x-ratelimit-remaining': '0', 'x-ratelimit-limit': '2' },
   });
+  assert.equal(JSON.stringify(await getJson('https://x.test/a?key=k', { fetchImpl: limited })).includes('x.test'), false);
   const bad = async () => ({
     ok: true,
     status: 200,

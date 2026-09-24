@@ -21,6 +21,9 @@ import {
   SCORE_SATURATION_WEIGHT,
   VENUE_MATCH_METRES,
   retryDelayMs,
+  describeRefusal,
+  makePacer,
+  MIN_SPACING_MS,
   RETRY_WAIT_MS,
   RETRY_MAX_WAIT_MS,
   EventsError,
@@ -38,6 +41,16 @@ const liveVenues = JSON.parse(readFileSync('test/fixtures/ticketmaster-venues.js
 // the week of the 16th to the 23rd, key stripped. Ten events, none at
 // Nationals Park or Arena Stage.
 const liveEvents = JSON.parse(readFileSync('test/fixtures/ticketmaster-events.json', 'utf8'));
+
+// The request pacer and the 429 retry both wait through an injected sleep and
+// read an injected clock. A clock that jumps a second per read never asks the
+// pacer to wait, so a test about something else does not sleep for real.
+const instant = async () => {};
+const ticking = () => {
+  let t = 0;
+  return () => (t += 1000);
+};
+const quick = () => ({ sleep: instant, clock: ticking() });
 
 const TZ = 'America/New_York';
 
@@ -316,7 +329,7 @@ function stubFetch({ events = liveEvents, venues = liveVenues, status = 200 } = 
 
 test('fetchEvents resolves every venue, queries once for all of them, and never logs the key', async () => {
   const fetchImpl = stubFetch();
-  const result = await fetchEvents(config, 'secret-key', fetchImpl, { now: noon16 });
+  const result = await fetchEvents(config, 'secret-key', fetchImpl, { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   assert.equal(result.evening, 1);
   assert.deepEqual(result.resolved, ['Nationals Park', 'Audi Field', 'The Anthem', 'Arena Stage']);
@@ -332,11 +345,11 @@ test('fetchEvents resolves every venue, queries once for all of them, and never 
 
 test('a venue the vendor does not know is reported, not fatal; none known is unknown', async () => {
   const withStranger = { ...config, venues: [...dcVenues, { name: 'Imaginary Bowl', lat: 38.9, lon: -77.0, weight: 1 }] };
-  const result = await fetchEvents(withStranger, 'k', stubFetch(), { now: noon16 });
+  const result = await fetchEvents(withStranger, 'k', stubFetch(), { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   assert.deepEqual(result.unresolved, ['Imaginary Bowl']);
   const none = { ...config, venues: [{ name: 'Imaginary Bowl', lat: 38.9, lon: -77.0, weight: 1 }] };
-  const lost = await fetchEvents(none, 'k', stubFetch(), { now: noon16 });
+  const lost = await fetchEvents(none, 'k', stubFetch(), { now: noon16, ...quick() });
   assert.equal(lost.unknown, true);
   assert.match(lost.reasons[0], /no configured venue matched/);
 });
@@ -344,7 +357,7 @@ test('a venue the vendor does not know is reported, not fatal; none known is unk
 test('no key is unknown, and asks the network for nothing', async () => {
   const fetchImpl = stubFetch();
   for (const key of [undefined, '', null]) {
-    const result = await fetchEvents(config, key, fetchImpl, { now: noon16 });
+    const result = await fetchEvents(config, key, fetchImpl, { now: noon16, ...quick() });
     assert.equal(result.unknown, true);
     assert.equal(result.score, null);
     assert.match(result.reasons[0], /no EVENTS_API_KEY/);
@@ -353,7 +366,7 @@ test('no key is unknown, and asks the network for nothing', async () => {
 });
 
 test('an HTTP 500 is unknown, not zero events', async () => {
-  const result = await fetchEvents(config, 'k', stubFetch({ status: 500 }), { now: noon16 });
+  const result = await fetchEvents(config, 'k', stubFetch({ status: 500 }), { now: noon16, ...quick() });
   assert.equal(result.unknown, true);
   assert.equal(result.count, null);
   assert.match(result.reasons[0], /HTTP 500/);
@@ -363,7 +376,7 @@ test('a thrown fetch is unknown and the reason carries no URL', async () => {
   const boom = async (url) => {
     throw new TypeError(`fetch failed: ${url}`);
   };
-  const result = await fetchEvents(config, 'k', boom, { now: noon16 });
+  const result = await fetchEvents(config, 'k', boom, { now: noon16, ...quick() });
   assert.equal(result.unknown, true);
   assert.match(result.reasons[0], /network error \(TypeError\)/);
   assert.equal(result.reasons[0].includes('apikey'), false);
@@ -390,12 +403,12 @@ test('fetchEvents never throws, whatever it is handed', async () => {
     ],
   ];
   for (const [cfg, key, fetchImpl] of cases) {
-    const result = await fetchEvents(cfg, key, fetchImpl, { now: noon16 });
+    const result = await fetchEvents(cfg, key, fetchImpl, { now: noon16, ...quick() });
     assert.equal(typeof result.unknown, 'boolean');
     assert.ok(Array.isArray(result.reasons));
   }
   // No venues configured is a real zero, not unknown: nothing was asked for.
-  const empty = await fetchEvents({ ...config, venues: [] }, 'k', stubFetch(), { now: noon16 });
+  const empty = await fetchEvents({ ...config, venues: [] }, 'k', stubFetch(), { now: noon16, ...quick() });
   assert.equal(empty.unknown, false);
   assert.equal(empty.count, 0);
   assert.equal(empty.score, 0);
@@ -593,7 +606,7 @@ test('fetchMlbGames never throws: a 500, a thrown fetch, bad JSON and a bad venu
 
 test('a mixed venue list merges both sources into one evening signal', async () => {
   const fetchImpl = twoSourceFetch();
-  const result = await fetchEvents(mixedConfig, 'secret-key', fetchImpl, { now: noon16 });
+  const result = await fetchEvents(mixedConfig, 'secret-key', fetchImpl, { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   // The Anthem fight from the ticketing week plus the home game from the schedule.
   assert.equal(result.evening, 2);
@@ -618,7 +631,7 @@ test('a mixed venue list merges both sources into one evening signal', async () 
 
 test('with no ticketing key the ballpark still answers and the ticketing venues are reported skipped', async () => {
   const fetchImpl = twoSourceFetch();
-  const result = await fetchEvents(mixedConfig, undefined, fetchImpl, { now: noon16 });
+  const result = await fetchEvents(mixedConfig, undefined, fetchImpl, { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   assert.equal(result.count, 1);
   assert.equal(result.evening, 1);
@@ -631,21 +644,21 @@ test('with no ticketing key the ballpark still answers and the ticketing venues 
   assert.equal(fetchImpl.mlbCalls().length, 1);
   // A ballpark with no game today is a real zero, not unknown.
   const offDay = twoSourceFetch({ schedule: { totalItems: 0, totalGames: 0, dates: [] } });
-  const quiet = await fetchEvents(ballparkOnly, '', offDay, { now: noon16 });
+  const quiet = await fetchEvents(ballparkOnly, '', offDay, { now: noon16, ...quick() });
   assert.equal(quiet.unknown, false);
   assert.equal(quiet.count, 0);
   assert.equal(quiet.score, 0);
 });
 
 test('a 500 from the schedule host is unknown for that venue only, and unknown outright when it was the only source', async () => {
-  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   assert.equal(result.evening, 1);
   assert.deepEqual(result.reasons, ['The Anthem game at 7:30 this evening']);
   assert.deepEqual(result.unresolved, ['Nationals Park']);
   assert.deepEqual(result.notes, ['Nationals Park: ballpark schedule unavailable: HTTP 500']);
 
-  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16, ...quick() });
   assert.equal(alone.unknown, true);
   assert.equal(alone.count, null);
   assert.equal(alone.score, null);
@@ -653,7 +666,7 @@ test('a 500 from the schedule host is unknown for that venue only, and unknown o
   assert.deepEqual(alone.unresolved, ['Nationals Park']);
 
   // The other way round: the ticketing host fails, the ballpark carries the signal.
-  const tmDown = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503 }), { now: noon16 });
+  const tmDown = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503 }), { now: noon16, ...quick() });
   assert.equal(tmDown.unknown, false);
   assert.equal(tmDown.partial, true);
   assert.deepEqual(tmDown.reasons, ['Nationals Park game at 6:45 this evening']);
@@ -665,7 +678,7 @@ test('a zero from the sources that answered says nothing about the one that fail
   // Ticketing down on an arena night, ballpark off day: the arena's events
   // are unknown, and the merged answer must not read as "no events".
   const offDay = { totalItems: 0, totalGames: 0, dates: [] };
-  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503, schedule: offDay }), { now: noon16 });
+  const result = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ tmStatus: 503, schedule: offDay }), { now: noon16, ...quick() });
   assert.equal(result.unknown, true);
   assert.equal(result.partial, true);
   assert.equal(result.count, null);
@@ -675,20 +688,20 @@ test('a zero from the sources that answered says nothing about the one that fail
   assert.match(result.notes[0], /^ticketing source failed/);
 
   // The same with no key: the skip is a failure for the ticketed venues.
-  const noKey = await fetchEvents(mixedConfig, undefined, twoSourceFetch({ schedule: offDay }), { now: noon16 });
+  const noKey = await fetchEvents(mixedConfig, undefined, twoSourceFetch({ schedule: offDay }), { now: noon16, ...quick() });
   assert.equal(noKey.unknown, true);
   assert.deepEqual(noKey.reasons, ['scheduled events unavailable: no EVENTS_API_KEY']);
   assert.deepEqual(noKey.notes, ['ticketing source skipped: no EVENTS_API_KEY']);
 
   // A ballpark failure on an evening the arena has something is still that event.
-  const game = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16 });
+  const game = await fetchEvents(mixedConfig, 'k', twoSourceFetch({ mlbStatus: 500 }), { now: noon16, ...quick() });
   assert.equal(game.unknown, false);
   assert.equal(game.partial, true);
   // And a ballpark-only failure names itself once.
-  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500, schedule: offDay }), { now: noon16 });
+  const alone = await fetchEvents(ballparkOnly, 'k', twoSourceFetch({ mlbStatus: 500, schedule: offDay }), { now: noon16, ...quick() });
   assert.deepEqual(alone.reasons, ['ballpark schedule unavailable: HTTP 500']);
   // A full answer from every source is not partial.
-  assert.equal((await fetchEvents(mixedConfig, 'k', twoSourceFetch(), { now: noon16 })).partial, false);
+  assert.equal((await fetchEvents(mixedConfig, 'k', twoSourceFetch(), { now: noon16, ...quick() })).partial, false);
 });
 
 test('the deadline rides along on every request, and a fetch that throws synchronously is unknown', async () => {
@@ -702,7 +715,7 @@ test('the deadline rides along on every request, and a fetch that throws synchro
       inits.push(init);
       return inner(url, init);
     },
-    { now: noon16, signal },
+    { now: noon16, signal, ...quick() },
   );
   assert.equal(inits.length, 5);
   assert.ok(inits.every((i) => i.signal === signal));
@@ -712,7 +725,7 @@ test('the deadline rides along on every request, and a fetch that throws synchro
     () => {
       throw new RangeError('no');
     },
-    { now: noon16 },
+    { now: noon16, ...quick() },
   );
   assert.equal(broken.unknown, true);
 });
@@ -730,7 +743,7 @@ test('a configured venue id skips its lookup, so a fully configured set costs on
       { name: 'The Anthem', lat: 38.8801, lon: -77.0262, weight: 1.0, ticketmaster_venue_id: 'KovZ917A3Y7' },
     ],
   };
-  const result = await fetchEvents(configured, 'k', fetchImpl, { now: noon16 });
+  const result = await fetchEvents(configured, 'k', fetchImpl, { now: noon16, ...quick() });
   assert.equal(result.unknown, false);
   assert.equal(result.partial, false);
   assert.deepEqual(result.resolved, ['Audi Field', 'The Anthem']);
@@ -743,20 +756,20 @@ test('a configured venue id skips its lookup, so a fully configured set costs on
 
 test('a venue resolved by lookup reports its id so it can be put in config', async () => {
   const one = { ...config, venues: [{ name: 'The Anthem', lat: 38.8801, lon: -77.0262, weight: 1.0 }] };
-  const result = await fetchEvents(one, 'k', stubFetch(), { now: noon16 });
+  const result = await fetchEvents(one, 'k', stubFetch(), { now: noon16, ...quick() });
   assert.deepEqual(result.discovered, [{ name: 'The Anthem', id: 'KovZ917A3Y7' }]);
 });
 
 // A fetch stub whose venue lookups fail with `status` for one keyword only.
 // Everything else answers from the recorded fixtures.
-function stubFetchFailing(keyword, { status = 429, retryAfter = null } = {}) {
+function stubFetchFailing(keyword, { status = 429, retryAfter = null, headers = {} } = {}) {
   const calls = [];
   const inner = stubFetch();
   const fn = async (url, init) => {
     const u = new URL(url);
     if (u.pathname.endsWith('/venues.json') && u.searchParams.get('keyword') === keyword) {
       calls.push(u);
-      return { ok: false, status, headers: new Headers(retryAfter === null ? {} : { 'retry-after': retryAfter }) };
+      return { ok: false, status, headers: new Headers({ ...(retryAfter === null ? {} : { 'retry-after': retryAfter }), ...headers }) };
     }
     return inner(url, init);
   };
@@ -767,7 +780,7 @@ function stubFetchFailing(keyword, { status = 429, retryAfter = null } = {}) {
 
 test('one venue lost to a rate limit does not discard the venues that answered', async () => {
   const fetchImpl = stubFetchFailing('Audi Field');
-  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async () => {} });
+  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, clock: ticking(), sleep: async () => {} });
   // The evening event at The Anthem still lands, so the signal is real.
   assert.equal(result.unknown, false);
   assert.equal(result.evening, 1);
@@ -788,7 +801,7 @@ test('a rate-limited lookup is retried once, waiting the Retry-After it was give
     waits.push(ms);
   };
   const fetchImpl = stubFetchFailing('Audi Field', { retryAfter: '1' });
-  await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep });
+  await fetchEvents(config, 'k', fetchImpl, { now: noon16, clock: ticking(), sleep });
   // Two attempts at the rate-limited venue, and no third.
   assert.equal(fetchImpl.calls.length, 2);
   assert.deepEqual(waits, [1000]);
@@ -797,7 +810,7 @@ test('a rate-limited lookup is retried once, waiting the Retry-After it was give
 test('a refusal that is not a rate limit is not retried', async () => {
   const waits = [];
   const fetchImpl = stubFetchFailing('Audi Field', { status: 503 });
-  await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async (ms) => waits.push(ms) });
+  await fetchEvents(config, 'k', fetchImpl, { now: noon16, clock: ticking(), sleep: async (ms) => waits.push(ms) });
   assert.equal(fetchImpl.calls.length, 1);
   assert.deepEqual(waits, []);
 });
@@ -815,8 +828,88 @@ test('the retry wait comes from Retry-After when it is a number of seconds, capp
 
 test('every ticketed venue lost to a rate limit is unknown outright, not a quiet zero', async () => {
   const fetchImpl = stubFetch({ status: 429 });
-  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, sleep: async () => {} });
+  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, clock: ticking(), sleep: async () => {} });
   assert.equal(result.unknown, true);
   assert.equal(result.count, null);
   assert.match(result.reasons[0], /venue lookup HTTP 429/);
+});
+
+test('a rate-limited lookup records what the vendor said about its limit, and nothing else', async () => {
+  const fetchImpl = stubFetchFailing('Audi Field', { retryAfter: '1', headers: { 'X-RateLimit-Remaining': '0' } });
+  const result = await fetchEvents(config, 'secret-key', fetchImpl, { now: noon16, ...quick() });
+  const note = result.notes.find((n) => n.startsWith('ticketing source degraded'));
+  assert.equal(note, 'ticketing source degraded: venue lookup HTTP 429 (retry-after=1, x-ratelimit-remaining=0)');
+  assert.equal(JSON.stringify(result).includes('secret-key'), false);
+  assert.equal(JSON.stringify(result).includes('ticketmaster.com'), false);
+  // A refusal with no such headers reads as it always did.
+  assert.equal(describeRefusal({ error: 'HTTP 503' }), 'HTTP 503');
+  assert.equal(describeRefusal({ error: 'HTTP 429', retryAfter: '', rateLimit: null }), 'HTTP 429');
+});
+
+// ---- Spacing (CMB-42, solution step 3): never more than one request per half second ----
+
+test('the pacer waits only for the remainder of the spacing, measured on the injected clock', async () => {
+  const waits = [];
+  let t = 0;
+  const pacer = makePacer({ clock: () => t, sleep: async (ms) => waits.push(ms) });
+  await pacer.pace(); // first call goes straight out
+  t = 100;
+  await pacer.pace(); // 400 ms short of the spacing
+  t = MIN_SPACING_MS + 50; // 50 ms after that wait ended: still 450 short
+  await pacer.pace();
+  t = 5000; // long idle, nothing to wait for
+  await pacer.pace();
+  assert.deepEqual(waits, [MIN_SPACING_MS - 100, MIN_SPACING_MS - 50]);
+  assert.equal(MIN_SPACING_MS, 500);
+});
+
+// A clock that moves only when the pacer sleeps: the vendor answers at once,
+// so every request would otherwise leave in the same instant.
+function frozenClock() {
+  const waits = [];
+  let t = 1_000_000;
+  return {
+    waits,
+    clock: () => t,
+    sleep: async (ms) => {
+      waits.push(ms);
+      t += ms;
+    },
+  };
+}
+
+test('venues without ids are looked up no faster than two a second, asserted on timestamps, never slept', async () => {
+  const { waits, clock, sleep } = frozenClock();
+  const fetchImpl = stubFetch();
+  const result = await fetchEvents(config, 'k', fetchImpl, { now: noon16, clock, sleep });
+  assert.equal(result.unknown, false);
+  // Four lookups then the events call: the first goes at once, each of the
+  // other four waits a full spacing.
+  assert.equal(fetchImpl.calls.length, 5);
+  assert.deepEqual(waits, [MIN_SPACING_MS, MIN_SPACING_MS, MIN_SPACING_MS, MIN_SPACING_MS]);
+});
+
+test('a fully configured set makes one request and the pacer never waits', async () => {
+  const waits = [];
+  const configured = {
+    ...config,
+    venues: [
+      { name: 'Audi Field', lat: 38.868, lon: -77.0136, weight: 0.5, ticketmaster_venue_id: 'KovZ917A8Q0' },
+      { name: 'The Anthem', lat: 38.8801, lon: -77.0262, weight: 1.0, ticketmaster_venue_id: 'KovZ917A3Y7' },
+    ],
+  };
+  const fetchImpl = stubFetch();
+  await fetchEvents(configured, 'k', fetchImpl, { now: noon16, clock: () => 1_000_000, sleep: async (ms) => waits.push(ms) });
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.deepEqual(waits, []);
+});
+
+test('a retried lookup is paced too: the retry wait and then whatever spacing is still owed', async () => {
+  const { waits, clock, sleep } = frozenClock();
+  const fetchImpl = stubFetchFailing('Audi Field', { retryAfter: '0' });
+  const one = { ...config, venues: [config.venues.find((v) => v.name === 'Audi Field')] };
+  await fetchEvents(one, 'k', fetchImpl, { now: noon16, clock, sleep });
+  assert.equal(fetchImpl.calls.length, 2);
+  // Retry-After: 0 is honoured as a zero wait; the pacer still spaces the retry.
+  assert.deepEqual(waits, [0, MIN_SPACING_MS]);
 });
