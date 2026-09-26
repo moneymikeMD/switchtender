@@ -90,6 +90,12 @@ minimum_drive_margin_minutes = 5
 # A morning forecast cannot see an afternoon crash and will not pretend to.
 assumed_evening_departure = "17:30"
 
+[service]
+# Where the deployed service answers, used when building the phone macros
+# (docs/phone.md). Optional. The real hostname belongs here, in the gitignored
+# config.toml, and nowhere in the repo.
+url = "https://switchtender.example.com"
+
 [transit]
 # Rail lines the transit leg rides, matched against the operator's planned
 # track-work schedule (currently the wmata.com table; the Boston example has no

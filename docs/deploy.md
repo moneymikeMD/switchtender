@@ -24,8 +24,12 @@ Cloud Build builder role (source deploys need it), and runs
 The service's hostname is deliberately not written anywhere in this public
 repo: an unauthenticated call is refused before any upstream API is touched,
 but a discoverable URL still invites traffic that costs Cloud Run requests.
-Read it from `gcloud run services describe switchtender --region us-east4`
-or the mapped domain in `gcloud beta run domain-mappings list --region us-east4`.
+It lives in two private places: the gitignored `config.toml` as
+`[service] url`, and 1Password as
+`op://Software_Development/Switchtender/service url`. The phone recipes in
+`docs/phone.md` read it from either. To recover it from the platform:
+`gcloud run services describe switchtender --region us-east4`, or the mapped
+domain in `gcloud beta run domain-mappings list --region us-east4`.
 
 Secrets and where they land in the container:
 
