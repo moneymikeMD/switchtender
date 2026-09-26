@@ -86,7 +86,12 @@ arrival for that place on that local date, which is ignored) and `verdictAt`
 (null when no verdict was logged that day; an arrival is still worth having).
 A failed write is logged server-side.
 
-The tab is created on first use, like the verdicts tab.
+The tab is created on first use, like the verdicts tab. `scripts/bq-external-table.sh` defines `switchtender.arrivals` over it beside
+`switchtender.verdicts`, schema from `ARRIVALS_HEADER` in `src/log.js`; re-run
+it after a header change. Score a morning by joining `arrivals.verdict_timestamp`
+to `verdicts.timestamp`, and pool `choice_taken = 'drive'` rows separately from
+transit ones: an office arrival after transit covers park, wait, ride and walk,
+none of which `drive_minutes` models.
 
 ## Weekday morning push (CMB-36, CMB-37)
 

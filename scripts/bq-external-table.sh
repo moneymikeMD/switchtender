@@ -1,12 +1,13 @@
 #!/bin/bash
-# Define the BigQuery external table over the verdict log Sheet (CMB-11).
+# Define the BigQuery external tables over the log Sheet (CMB-11, CMB-41).
 #
-# Creates dataset `switchtender` (if missing) and (re)defines external table
-# `switchtender.verdicts` with source format GOOGLE_SHEETS, reading the tab
-# named in SHEET_TAB (default: verdicts), skipping the header row.
+# Creates dataset `switchtender` (if missing) and (re)defines two external
+# tables with source format GOOGLE_SHEETS, each skipping its header row:
+#   switchtender.verdicts  over the tab in SHEET_TAB    (default: verdicts)
+#   switchtender.arrivals  over the tab in ARRIVALS_TAB (default: arrivals)
 #
-# The schema is generated from FULL_HEADER in src/log.js (the frozen HEADER
-# plus EXTRA_COLUMNS), so the two cannot drift.
+# Schemas are generated from src/log.js (FULL_HEADER and ARRIVALS_HEADER), so
+# the tables cannot drift from what the service writes.
 # Every column is STRING for v1: the Sheet stores cells as text (RAW), the
 # log is about 500 rows a year, and CAST() in the query is cheaper than a
 # type mismatch that silently drops rows. Tighten types once the columns
@@ -15,7 +16,8 @@
 # Inputs, none of them on the command line:
 #   SHEET_ID     the spreadsheet id; if unset, read from 1Password:
 #                op://Software_Development/Switchtender/commuter-bot google sheet id
-#   SHEET_TAB    tab name (default: verdicts)
+#   SHEET_TAB    verdicts tab name (default: verdicts)
+#   ARRIVALS_TAB arrivals tab name (default: arrivals)
 #   PROJECT      GCP project (default: commuter-bot-501717)
 #   LOCATION     dataset location (default: US)
 #
@@ -33,8 +35,8 @@ cd "$repo"
 PROJECT="${PROJECT:-commuter-bot-501717}"
 LOCATION="${LOCATION:-US}"
 SHEET_TAB="${SHEET_TAB:-verdicts}"
+ARRIVALS_TAB="${ARRIVALS_TAB:-arrivals}"
 DATASET="switchtender"
-TABLE="verdicts"
 
 if [ -z "${SHEET_ID:-}" ]; then
   SHEET_ID="$(op read "op://Software_Development/Switchtender/commuter-bot google sheet id")"
@@ -49,24 +51,26 @@ command -v node >/dev/null || { echo "bq-external-table: node not found" >&2; ex
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
-def="$workdir/verdicts.def.json"
 
-# Schema from the single source of truth. Note the table definition file, not
-# argv, carries the sheet id, so it never shows up in `ps` or shell history.
-node --input-type=module - "$SHEET_ID" "$SHEET_TAB" >"$def" <<'EOF'
-import { FULL_HEADER as HEADER } from './src/log.js';
-const [sheetId, tab] = process.argv.slice(2);
+# Write one table definition. The definition file, not argv, carries the
+# sheet id, so it never shows up in `ps` or shell history.
+write_def() {
+  local header_export="$1" tab="$2" out="$3"
+  node --input-type=module - "$SHEET_ID" "$tab" "$header_export" >"$out" <<'EOF_NODE'
+import * as log from './src/log.js';
+const [sheetId, tab, headerExport] = process.argv.slice(2);
+const header = log[headerExport];
+if (!Array.isArray(header)) throw new Error(`src/log.js does not export ${headerExport}`);
 const def = {
   sourceFormat: 'GOOGLE_SHEETS',
   sourceUris: [`https://docs.google.com/spreadsheets/d/${sheetId}`],
   googleSheetsOptions: { skipLeadingRows: 1, range: tab },
   autodetect: false,
-  schema: { fields: HEADER.map((name) => ({ name, type: 'STRING', mode: 'NULLABLE' })) },
+  schema: { fields: header.map((name) => ({ name, type: 'STRING', mode: 'NULLABLE' })) },
 };
 process.stdout.write(JSON.stringify(def, null, 2));
-EOF
-
-echo "schema: $(node --input-type=module -e "import { FULL_HEADER } from './src/log.js'; console.log(FULL_HEADER.length)") STRING columns from src/log.js FULL_HEADER"
+EOF_NODE
+}
 
 if ! bq --project_id="$PROJECT" show --format=none "$DATASET" >/dev/null 2>&1; then
   echo "creating dataset $PROJECT:$DATASET in $LOCATION"
@@ -76,14 +80,26 @@ else
   echo "dataset $PROJECT:$DATASET exists"
 fi
 
-# Redefine so a HEADER change is a re-run, not a manual edit.
-if bq --project_id="$PROJECT" show --format=none "$DATASET.$TABLE" >/dev/null 2>&1; then
-  echo "replacing external table $DATASET.$TABLE"
-  bq --project_id="$PROJECT" rm -f -t "$DATASET.$TABLE"
-fi
-bq --project_id="$PROJECT" mk \
-  --description="one row per verdict, external over the Google Sheet tab $SHEET_TAB" \
-  --external_table_definition="$def" "$DATASET.$TABLE"
+# Redefine so a header change is a re-run, not a manual edit.
+define_table() {
+  local table="$1" header_export="$2" tab="$3" description="$4"
+  local def="$workdir/$table.def.json"
+  write_def "$header_export" "$tab" "$def"
+  local columns
+  columns="$(node -e "const d=require('$def');console.log(d.schema.fields.length)")"
+  echo "schema: $columns STRING columns from src/log.js $header_export"
+  if bq --project_id="$PROJECT" show --format=none "$DATASET.$table" >/dev/null 2>&1; then
+    echo "replacing external table $DATASET.$table"
+    bq --project_id="$PROJECT" rm -f -t "$DATASET.$table"
+  fi
+  bq --project_id="$PROJECT" mk \
+    --description="$description, external over the Google Sheet tab $tab" \
+    --external_table_definition="$def" "$DATASET.$table"
+  echo "defined $PROJECT.$DATASET.$table over Sheet ...${SHEET_ID: -4} tab $tab"
+}
 
-echo "defined $PROJECT.$DATASET.$TABLE over Sheet ...${SHEET_ID: -4} tab $SHEET_TAB"
-echo "try: bq query --use_legacy_sql=false 'SELECT COUNT(*) FROM $DATASET.$TABLE'"
+define_table verdicts FULL_HEADER "$SHEET_TAB" "one row per verdict"
+define_table arrivals ARRIVALS_HEADER "$ARRIVALS_TAB" "one row per phone-recorded arrival (CMB-41)"
+
+echo "try: bq query --use_legacy_sql=false 'SELECT COUNT(*) FROM $DATASET.verdicts'"
+echo "join: verdicts v JOIN arrivals a ON a.verdict_timestamp = v.timestamp"
