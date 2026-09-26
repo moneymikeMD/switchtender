@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0](https://github.com/moneymikeMD/switchtender/compare/v1.3.1...v1.4.0) (2026-09-26)
+
+
+### Features
+
+* define the arrivals BigQuery table beside verdicts (CMB-41) ([dd8939b](https://github.com/moneymikeMD/switchtender/commit/dd8939b0c610e585151890dd8a59ba3a58c7425e))
+* define the arrivals BigQuery table beside verdicts (CMB-41) ([7257988](https://github.com/moneymikeMD/switchtender/commit/72579880cfe47ac903859bd90ac4b5c370017177))
+* take the service url from config.toml, never from the repo ([0607728](https://github.com/moneymikeMD/switchtender/commit/0607728bd1721f4bd4b65e5b317d9a0403df1b2a))
+* take the service url from config.toml, never from the repo ([099d222](https://github.com/moneymikeMD/switchtender/commit/099d222b1a115d075f04ab225a7927dbc84e50f1))
+
 ## [1.3.1](https://github.com/moneymikeMD/switchtender/compare/v1.3.0...v1.3.1) (2026-09-24)
 
 
