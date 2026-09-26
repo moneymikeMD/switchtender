@@ -79,12 +79,15 @@ grant.
 
 **A commit pushed with the default `GITHUB_TOKEN` does not trigger other
 workflows** (GitHub's anti-recursion guard). `release-please` rebasing its
-own PR on every push to `main` is exactly this: the rebase commit lands,
-but `ci.yml`'s `pull_request`/`push` triggers never fire, so the release
-PR sits with stale or missing checks. Fix each time it happens: `gh pr
-close <n> && gh pr reopen <n>` — a human/PAT-authored event, so it does
-trigger the workflows normally. No permanent fix without a PAT in place of
-`GITHUB_TOKEN` for that one workflow, which hasn't been set up here.
+own PR on every push to `main` used to hit exactly this: the rebase commit
+landed but `ci.yml` never ran, so the release PR sat with no checks. Since
+2026-09-26 the workflow passes `token: ${{ secrets.RELEASE_PLEASE_TOKEN }}`,
+a fine-grained PAT (Contents and Pull requests read/write) kept at
+`op://Software_Development/github.com/release-please pat`, so its pushes
+trigger CI like a human's. If a release PR ever shows no checks again, the
+PAT has expired: mint a new one, `op read ... | gh secret set
+RELEASE_PLEASE_TOKEN --repo moneymikeMD/switchtender`, then `gh pr close <n>
+&& gh pr reopen <n>` once to kick the stuck PR.
 
 Bot-authored PRs (Dependabot, `release-please`'s `github-actions[bot]`)
 are exempted from `pr-body-length.yml` — their bodies are generated
