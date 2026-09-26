@@ -39,11 +39,14 @@ values from the file; nothing in this document or the repo carries them.
 
 ## Import instead of building by hand
 
-`docs/switchtender.macro` is the whole macro as a MacroDroid export. It began
+`docs/switchtender.category` is all three macros (the fork trigger and the two
+arrival macros of CMB-41) as one MacroDroid category export, with the shared
+global `st_took`. The fork macro began
 as a file generated against MacroDroid's own AI schema (v1.0, app 5.60+),
 was installed on the owner's phone through remote.macrodroid.com on
 2026-09-16, edited there, and exported back; the committed file is that
-export with run-time values blanked. Two ways in:
+export, re-exported 2026-09-26 with the arrival macros, run-time values
+blanked and the service host replaced by `<service>`. Two ways in:
 
 - **Web:** sign in at https://remote.macrodroid.com, connect the phone,
   Macros tab, `Import macro / category…`, pick the file.

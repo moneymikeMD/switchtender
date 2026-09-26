@@ -32,7 +32,7 @@ ROUTES_API_KEY=... npm start
   `switchtender`, `commuter`, `cmb`, `tomtom`, `wmata`, `chart`, `ddot`.
 - **Resume notes:** `docs/handoffs/`, newest first. Read only the newest.
 - **Service:** Cloud Run `switchtender` in `commuter-bot-501717`, us-east4; `docs/deploy.md`.
-- **Phone:** MacroDroid macro `docs/switchtender.macro`; `docs/phone.md`.
+- **Phone:** MacroDroid macros `docs/switchtender.category`; `docs/phone.md`.
 - **v1:** a separate private repository. It stays private forever because its
   history holds the owner's home coordinates. Nothing here depends on it.
 

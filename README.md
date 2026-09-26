@@ -99,9 +99,10 @@ npm start -- --from origin
   Cloud Run behind a shared-secret header, scale-to-zero, secrets in Secret
   Manager, config mounted as a file. One script.
 - **Fire it from the phone.** [docs/phone.md](docs/phone.md) and
-  [docs/switchtender.macro](docs/switchtender.macro) give you a MacroDroid
-  macro for Android: a geofence four miles before the fork triggers an HTTP
-  call and speaks the answer over the car audio, weekday mornings only.
+  [docs/switchtender.category](docs/switchtender.category) give you the
+  MacroDroid macros for Android: a geofence four miles before the fork triggers
+  an HTTP call and speaks the answer over the car audio, weekday mornings only,
+  and two more record when you actually arrived.
 - **Know what it costs.** [docs/cost-routes.md](docs/cost-routes.md) works
   through the Routes API tiers. Two verdicts a weekday sits inside the free
   quota.
