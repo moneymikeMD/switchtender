@@ -253,3 +253,17 @@ test('a ticketing venue may carry its vendor id, and only a ticketing venue may 
     (e) => e instanceof ConfigError && e.message.includes('only meaningful with provider = "ticketmaster"'),
   );
 });
+
+test('[service] url is optional, must be an https origin, and the example names no real host', () => {
+  const example = parseConfig(exampleText);
+  assert.equal(example.service.url, 'https://switchtender.example.com');
+  assert.match(example.service.url, /\.example\.com$/);
+  const without = exampleText.replace('url = "https://switchtender.example.com"', '');
+  assert.equal(parseConfig(without).service.url, null);
+  const at = (value) => exampleText.replace('url = "https://switchtender.example.com"', `url = ${value}`);
+  assert.throws(() => parseConfig(at('"http://switchtender.example.com"')), /https origin/);
+  assert.throws(() => parseConfig(at('"https://switchtender.example.com/verdict"')), /https origin/);
+  assert.throws(() => parseConfig(at('"https://switchtender.example.com/"')), /https origin/);
+  assert.throws(() => parseConfig(at('"not a url"')), /not a URL/);
+  assert.throws(() => parseConfig(at('42')), /should be string/);
+});

@@ -134,6 +134,31 @@ function logBlock(raw) {
   return { enabled, sheet_id, sheet_tab, arrivals_tab };
 }
 
+// Where the deployed service answers. Optional and never printed by the
+// service; it exists so the real hostname lives in the gitignored config
+// rather than in this public repo's docs or macro export.
+function serviceBlock(raw) {
+  const block = raw.service ?? {};
+  if (typeof block !== 'object' || Array.isArray(block)) {
+    throw new ConfigError('config: [service] should be a table');
+  }
+  const url = block.url ?? null;
+  if (url === null) return { url: null };
+  if (typeof url !== 'string') {
+    throw new ConfigError(`config: key "service.url" should be string, got ${typeof url}`);
+  }
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ConfigError(`config: service.url is not a URL: ${JSON.stringify(url)}`);
+  }
+  if (parsed.protocol !== 'https:' || parsed.pathname !== '/' || parsed.search || parsed.hash || url.endsWith('/')) {
+    throw new ConfigError('config: service.url should be an https origin with no path, query or trailing slash');
+  }
+  return { url };
+}
+
 // The transit leg (CMB-26). Optional: a config without [transit] names no rail
 // lines, so the planned track-work feed has nothing to match and stays quiet.
 // Names are matched to the schedule page's canonical spelling here, so
@@ -257,6 +282,7 @@ export function parseConfig(text) {
 
   return {
     route,
+    service: serviceBlock(raw),
     log: logBlock(raw),
     transit: transitBlock(raw),
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
