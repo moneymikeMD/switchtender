@@ -2,6 +2,30 @@
 
 Dated log of decisions that need a durable home. Newest first.
 
+## 2026-09-26 — CMB-44: the landing page lives outside this repo
+
+**Decision:** the landing page source lives in the private repository
+`moneymikeMD/project-sites` under `projects/switchtender/`, hosted on
+Cloudflare Pages at https://switchtender.dipuce.com. `dipuce.com` is the
+owner's consultancy domain. Epic: CMB-43.
+
+**Rejected:** GitHub Pages from this repo, and a docs site that duplicates
+`docs/`. The wiki already mirrors `docs/*.md`.
+
+## 2026-09-26 — CMB-44: keep the name "switchtender", always with a descriptor
+
+**Decision:** keep the name. In public, always pair it with the fixed
+descriptor "switchtender: keep driving or take the train", which is the
+product's own two spoken verdicts. Epic: CMB-43.
+
+**Why a descriptor:** a different product, `kordloom/switchtender`
+(infrastructure automation: one Go binary that runs Ansible and Terraform with
+approvals), was created 2026-07-21, before this repo (2026-09-16). It owns
+switchtender.com, switchtender.pages.dev and demo.switchtender.com.
+
+**Rejected:** renaming. It touches the repo, the Cloud Run service, the docs,
+the Jira Space and memory, and the railway name is the heart of the pitch.
+
 ## 2026-09-18 — CMB-36: push channel is ntfy.sh (public), not lab-ntfy or FCM
 
 **Decision:** verdict-change alerts push via the public `ntfy.sh` instance, to a
