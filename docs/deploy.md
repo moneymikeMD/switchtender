@@ -21,6 +21,12 @@ runtime service account `commuter-bot@commuter-bot-501717.iam.gserviceaccount.co
 Cloud Build builder role (source deploys need it), and runs
 `gcloud run deploy --source .`.
 
+The service answers at **`https://traffic.cloud.dipuce.com`**, a Cloud Run
+domain mapping (us-east4, CNAME to `ghs.googlehosted.com` at the registrar,
+certificate provisioned 2026-09-18). The generated `.run.app` URLs reach the
+same revision; the phone macros may use either. `traffic.app.dipuce.com` is a
+LAN name on homelab and is not this service.
+
 Secrets and where they land in the container:
 
 | Secret Manager name | In the container |
