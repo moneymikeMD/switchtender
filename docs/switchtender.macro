@@ -102,7 +102,7 @@
         "m_decimalValue": 0,
         "m_intValue": 0,
         "m_name": "st_url",
-        "m_stringValue": "https://switchtender-678283319848.us-east4.run.app/verdict",
+        "m_stringValue": "https://<service>/verdict",
         "m_type": 2,
         "supportsInput": false,
         "supportsOutput": true
