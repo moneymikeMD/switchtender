@@ -75,7 +75,8 @@ step by step, for reference or for Tasker.
    `Switchtender trigger`. Event: **Area Entered**. Loitering delay: 0.
 3. **Action** > Connectivity > **HTTP Request**.
    - Method: `GET`
-   - URL: `https://switchtender-678283319848.us-east4.run.app/verdict`
+   - URL: `https://traffic.cloud.dipuce.com/verdict` (the `.run.app` URL in
+     the exported macro reaches the same service)
    - Header Parameters: add one. Key `X-Switchtender-Key`, Value: the shared
      secret, pasted from 1Password item `Switchtender shared secret`
      (vault `Software_Development`, field `credential`).
@@ -120,7 +121,8 @@ Build one macro per place. Both are the same three blocks:
    delay 0. One fence on the park-and-ride lot, one on the office. Name them
    `Switchtender arrived park` and `Switchtender arrived office`.
 2. **Action** > Applications > **HTTP Request**. Method **POST**, URL
-   `https://<service>/arrived?place=park` (or `?place=office`), one header
+   `https://traffic.cloud.dipuce.com/arrived?place=park` (or `?place=office`),
+   one header
    parameter `X-Switchtender-Key` with the shared secret. No body. The
    service has no response for the macro to read, so no JSON parse and no
    Speak Text: an arrival is silent.
