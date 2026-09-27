@@ -5,6 +5,8 @@ decides which track a train takes. This tool does that for a commute. At a
 fork you pass every morning, it reads live conditions and says, out loud,
 whether to keep driving or park and take the train.
 
+To see it work, visit [switchtender.dipuce.com](https://switchtender.dipuce.com).
+
 ```
 Keep driving. Driving is 38 minutes, the train is 84 minutes.
 Driving saves 46 minutes, more than the 5 needed, the road ahead is clear,
