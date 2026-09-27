@@ -1,6 +1,6 @@
 <div align="center">
   <h1>switchtender</h1>
-  <a href="https://switchtender.dipuce.com"><img src="https://switchtender.dipuce.com/social-card.png" alt="switchtender: keep driving or take the train" width="210"></a>
+  <a href="https://switchtender.dipuce.com"><img src="https://switchtender.dipuce.com/social-card.png" alt="switchtender: keep driving or take the train" width="420"></a>
 </div>
 
 A switchtender is the railway worker who sets the switch at a junction and
