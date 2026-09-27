@@ -1,6 +1,7 @@
-# switchtender
-
-[![switchtender: keep driving or take the train](https://switchtender.dipuce.com/social-card.png)](https://switchtender.dipuce.com)
+<div align="center">
+  <h1>switchtender</h1>
+  <a href="https://switchtender.dipuce.com"><img src="https://switchtender.dipuce.com/social-card.png" alt="switchtender: keep driving or take the train" width="210"></a>
+</div>
 
 A switchtender is the railway worker who sets the switch at a junction and
 decides which track a train takes. This tool does that for a commute. At a
