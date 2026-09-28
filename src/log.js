@@ -126,7 +126,8 @@ export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);
 export const ENGINE_VERSION = 'switchtender/1.0.0';
 
 // What a `trigger` cell may hold. `poll` rows are hourly samples nobody acted
-// on, so the readers that look for the last real call skip them.
+// on, so the readers that look for the last real call skip them, and they
+// skip the outbound trip (CMB-82) the same way.
 export const TRIGGERS = Object.freeze(['phone', 'schedule', 'poll']);
 
 // Meteorological seasons, northern hemisphere. The log is for a commute in
@@ -205,9 +206,7 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
     local_date: t.localDate,
     weekday: t.weekday,
     season: t.season,
-    // Every verdict so far is given on the way in. The evening leg is CMB-82;
-    // until then the value is constant so the column exists.
-    direction: 'inbound',
+    direction: options?.direction ?? 'inbound',
 
     drive_minutes: drive.totalSeconds == null ? null : Math.round(drive.totalSeconds / 60),
     drive_seconds: drive.totalSeconds ?? null,
@@ -314,30 +313,33 @@ function columnLetter(index) {
 
 const CHOICE_COLUMN = columnLetter(HEADER.indexOf('choice'));
 const TRIGGER_COLUMN = columnLetter(FULL_HEADER.indexOf('trigger'));
+const DIRECTION_COLUMN = columnLetter(HEADER.indexOf('direction'));
 
-// Indexes (from row 2) of the rows logged by an hourly sample. Sheets answers
-// 400 for a range past the grid, which a tab narrower than the trigger column
-// is, and such a tab cannot hold a poll row yet.
-async function pollRows({ sheetId, tab, token, fetchImpl, signal }) {
-  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${TRIGGER_COLUMN}2:${TRIGGER_COLUMN}`)}`;
-  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
-  if (!result.ok) return result.status === 400 ? { ok: true, rows: new Set() } : { ok: false, error: result.error };
-  const values = result.body?.values ?? [];
-  return { ok: true, rows: new Set(values.flatMap((row, i) => (row?.[0] === 'poll' ? [i] : []))) };
+// Indexes (from row 2) of rows that are not a real inbound call: an hourly
+// sample, or the trip home. Sheets answers 400 for a range past the grid,
+// which a tab narrower than the trigger column is, and such a tab cannot hold
+// a poll row yet.
+async function skippedRows({ sheetId, tab, token, fetchImpl, signal }) {
+  const read = (column) => sheetsCall(fetchImpl, token, 'GET', `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${column}2:${column}`)}`, undefined, signal);
+  const [trigger, direction] = await Promise.all([read(TRIGGER_COLUMN), read(DIRECTION_COLUMN)]);
+  if (!trigger.ok && trigger.status !== 400) return { ok: false, error: trigger.error };
+  if (!direction.ok) return { ok: false, error: direction.error };
+  const matching = (values, value) => (values ?? []).flatMap((row, i) => (row?.[0] === value ? [i] : []));
+  return { ok: true, rows: new Set([...matching(trigger.ok ? trigger.body?.values : [], 'poll'), ...matching(direction.body?.values, 'outbound')]) };
 }
 
-/** The most recent logged `choice` (CMB-37), ignoring hourly samples. Null means never logged or the read failed, not "clear". */
+/** The most recent logged `choice` (CMB-37), ignoring hourly samples and the trip home. Null means never logged or the read failed, not "clear". */
 export async function getLastChoice({ sheetId, tab, token, fetchImpl = fetch, signal }) {
   const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${CHOICE_COLUMN}2:${CHOICE_COLUMN}`)}`;
-  const [result, polls] = await Promise.all([
+  const [result, skipped] = await Promise.all([
     sheetsCall(fetchImpl, token, 'GET', url, undefined, signal),
-    pollRows({ sheetId, tab, token, fetchImpl, signal }),
+    skippedRows({ sheetId, tab, token, fetchImpl, signal }),
   ]);
   if (!result.ok) return { ok: false, choice: null, error: result.error };
-  if (!polls.ok) return { ok: false, choice: null, error: polls.error };
+  if (!skipped.ok) return { ok: false, choice: null, error: skipped.error };
   const values = result.body?.values ?? [];
   for (let i = values.length - 1; i >= 0; i -= 1) {
-    if (polls.rows.has(i)) continue;
+    if (skipped.rows.has(i)) continue;
     const value = values[i]?.[0];
     if (typeof value === 'string' && value) return { ok: true, choice: value, error: null };
   }
@@ -492,21 +494,21 @@ const TIMESTAMP_COLUMN = columnLetter(HEADER.indexOf('timestamp'));
 
 /**
  * The timestamp of the last verdict logged on `localDate`, hourly samples
- * aside, or null. Null is "no verdict to attach this arrival to", never an
+ * and the trip home aside, or null. Null is "no verdict to attach this arrival to", never an
  * error the caller should treat as one: an arrival worth recording is worth
  * recording alone.
  */
 export async function lastVerdictAt({ sheetId, tab, token, localDate, fetchImpl = fetch, signal }) {
   const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${TIMESTAMP_COLUMN}2:${TIMESTAMP_COLUMN}`)}`;
-  const [result, polls] = await Promise.all([
+  const [result, skipped] = await Promise.all([
     sheetsCall(fetchImpl, token, 'GET', url, undefined, signal),
-    pollRows({ sheetId, tab, token, fetchImpl, signal }),
+    skippedRows({ sheetId, tab, token, fetchImpl, signal }),
   ]);
   if (!result.ok) return { ok: false, timestamp: null, error: result.error };
-  if (!polls.ok) return { ok: false, timestamp: null, error: polls.error };
+  if (!skipped.ok) return { ok: false, timestamp: null, error: skipped.error };
   const values = result.body?.values ?? [];
   for (let i = values.length - 1; i >= 0; i -= 1) {
-    if (polls.rows.has(i)) continue;
+    if (skipped.rows.has(i)) continue;
     const value = values[i]?.[0];
     if (typeof value === 'string' && value.startsWith(localDate)) return { ok: true, timestamp: value, error: null };
   }

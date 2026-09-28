@@ -138,6 +138,59 @@ test('every extra the engine logs has a column, in EXTRA_COLUMNS order, and the 
   assert.equal(col('trigger'), '', 'no trigger given is unknown, never a guess');
 });
 
+test('the trip home is logged as outbound and never spoken (CMB-82)', async () => {
+  const rows = [];
+  const inner = stubFetch();
+  const fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('metadata.google.internal')) return { ok: true, json: async () => ({ access_token: 'tok' }) };
+    if (u.includes('sheets.googleapis.com')) {
+      if (init.method === 'GET') return { ok: true, status: 200, json: async () => ({ values: [Array.from(FULL_HEADER)] }) };
+      rows.push(JSON.parse(init.body).values[0]);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    return inner(url, init);
+  };
+  const result = await runVerdict(baseConfig({ log: true }), { fetchImpl, now: new Date('2026-09-17T21:30:00Z'), direction: 'outbound', trigger: 'poll' });
+  assert.equal(result.spoken, null);
+  assert.equal(result.options.direction, 'outbound');
+  assert.ok(result.verdict.choice, 'the rule still decides, for the log');
+  assert.equal(rows[0][FULL_HEADER.indexOf('direction')], 'outbound');
+  assert.equal(rows[0][FULL_HEADER.indexOf('trigger')], 'poll');
+});
+
+test('outbound, the evening window is centred on the actual departure, not the assumed one (CMB-82)', async () => {
+  // A 9:00 PM game at the ballpark. At 8:30 PM the trip home meets its crowd;
+  // the assumed 5:30 PM departure's window closes at 8:30 and would miss it.
+  const schedule = {
+    dates: [
+      {
+        games: [
+          {
+            gameDate: '2026-09-17T01:00:00Z',
+            officialDate: '2026-09-16',
+            status: { detailedState: 'Scheduled', startTimeTBD: false },
+            teams: { home: { team: { name: 'Boston Red Sox' } }, away: { team: { name: 'New York Yankees' } } },
+            venue: { name: 'Fenway Park' },
+          },
+        ],
+      },
+    ],
+  };
+  const config = baseConfig();
+  config.venues = config.venues.filter((v) => v.provider === 'mlb');
+  const fetchImpl = () => {
+    const inner = stubFetch();
+    return async (url, init) =>
+      String(url).startsWith('https://statsapi.mlb.com/') ? { ok: true, status: 200, json: async () => schedule } : inner(url, init);
+  };
+  const now = new Date('2026-09-17T00:30:00Z');
+  const inbound = await runVerdict(config, { fetchImpl: fetchImpl(), log: false, now });
+  const outbound = await runVerdict(config, { fetchImpl: fetchImpl(), log: false, now, direction: 'outbound' });
+  assert.equal(inbound.events.evening, 0);
+  assert.equal(outbound.events.evening, 1);
+});
+
 test('the trigger a caller names lands in the trigger column (CMB-81)', async () => {
   const rows = [];
   const inner = stubFetch();

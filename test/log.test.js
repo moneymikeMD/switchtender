@@ -490,6 +490,27 @@ test('lastVerdictAt finds the last verdict of that local day, and nothing on a d
   assert.equal(broken.timestamp, null);
 });
 
+test('the direction column carries the trip the options measured (CMB-82)', () => {
+  assert.equal(col(buildRow({ now, config, options, incidents, verdict }), 'direction'), 'inbound');
+  const home = buildRow({ now, config, options: { ...options, direction: 'outbound' }, incidents, verdict });
+  assert.equal(col(home, 'direction'), 'outbound');
+});
+
+test('the push and the arrival join skip the trip home as they skip samples (CMB-82)', async () => {
+  const fetchImpl = byColumn({
+    A: { values: [['2026-09-22T08:28:15-04:00'], ['2026-09-22T17:30:02-04:00']] },
+    AC: { values: [['transit'], ['drive']] },
+    E: { values: [['inbound'], ['outbound']] },
+  });
+  const choice = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl });
+  assert.equal(choice.choice, 'transit');
+  const at = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl });
+  assert.equal(at.timestamp, '2026-09-22T08:28:15-04:00');
+
+  const broken = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: byColumn({ AC: { values: [['drive']] }, E: 500 }) });
+  assert.equal(broken.ok, false);
+});
+
 test('lastVerdictAt attaches an arrival to the drive, not to a later hourly sample (CMB-81)', async () => {
   const fetchImpl = byColumn({
     A: { values: [['2026-09-22T07:00:04-04:00'], ['2026-09-22T08:28:15-04:00'], ['2026-09-22T08:30:02-04:00'], ['2026-09-22T09:30:01-04:00']] },

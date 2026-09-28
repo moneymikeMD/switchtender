@@ -25,7 +25,7 @@
 import { computeOptions } from './routes.js';
 import { decide, speak } from './verdict.js';
 import { loadIncidents, assessTrajectory, unknownIncidents } from './incidents.js';
-import { logVerdict } from './log.js';
+import { logVerdict, localTime } from './log.js';
 import { loadClosures, assessClosures, unknownClosures } from './closures.js';
 import { loadChart, assessChart, unknownChart } from './chart.js';
 import { fetchEvents, unknownEvents } from './events.js';
@@ -56,16 +56,28 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  * @param options.from       'fork' (default) for the verdict at the fork, 'origin'
  *                           for a whole-trip estimate from home (CMB-30)
  * @param options.trigger    who asked, one of log.TRIGGERS, or null when unknown (CMB-81)
+ * @param options.direction  'inbound' (default), or 'outbound' for the trip home,
+ *                           which is logged and never spoken (CMB-82)
  * @param options.signalTimeoutMs  deadline per optional feed
  * @param options.logTimeoutMs     deadline for the sheet write
  * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
+ *          where spoken is null on the outbound trip,
  *          where events and trackwork are null when not consulted (no venues, no lines),
  *          where logged is { ok, error } or null when nothing was attempted.
  * @throws RouteError when the onward options cannot be computed.
  */
 export async function runVerdict(
   config,
-  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork', trigger = null, signalTimeoutMs = SIGNAL_TIMEOUT_MS, logTimeoutMs = LOG_TIMEOUT_MS } = {},
+  {
+    fetchImpl = fetch,
+    now = new Date(),
+    log = true,
+    from = 'fork',
+    trigger = null,
+    direction = 'inbound',
+    signalTimeoutMs = SIGNAL_TIMEOUT_MS,
+    logTimeoutMs = LOG_TIMEOUT_MS,
+  } = {},
 ) {
   const { decision, secrets } = config;
   const nowMs = now.getTime();
@@ -80,9 +92,14 @@ export async function runVerdict(
   // track work (CMB-26) needs only the configured lines. No venues or no
   // lines means the signal is not attempted and stays null, which decide()
   // reads as "not consulted", not "clear".
+  // Outbound, the evening departure is now, not the assumed one.
+  const eventsConfig =
+    direction === 'outbound'
+      ? { ...config, decision: { ...decision, assumed_evening_departure: localTime(now, config.route.timezone).timestamp.slice(11, 16) } }
+      : config;
   const eventsPromise =
     (config.venues ?? []).length > 0
-      ? guardWhole(fetchEvents(config, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }), unknownEvents)
+      ? guardWhole(fetchEvents(eventsConfig, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }), unknownEvents)
       : Promise.resolve(null);
   const lines = config.transit?.lines ?? [];
   const trackworkPromise =
@@ -99,7 +116,7 @@ export async function runVerdict(
       ? guardWhole(fetchWmata(lines, secrets.keys.TRANSIT_API_KEY ?? null, fetchImpl, { signal: deadline() }), unknownWmata)
       : Promise.resolve(null);
 
-  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, { from, now });
+  const options = await computeOptions(config, secrets.keys.ROUTES_API_KEY, fetchImpl, { from, direction, now });
 
   // Incidents (CMB-22, route-matched since 2026-09-17), closures (CMB-28) and
   // Maryland records (CMB-16) are matched against the drive geometry.
@@ -154,5 +171,6 @@ export async function runVerdict(
     logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
   }
 
-  return { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken: speak(verdict), logged };
+  const spoken = direction === 'outbound' ? null : speak(verdict);
+  return { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged };
 }
