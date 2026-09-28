@@ -255,6 +255,29 @@ test('?from=origin reaches the pipeline; anything else but fork is a 400 after t
   assert.equal((await fetch(`${base}/verdict?from=garage`)).status, 401);
 });
 
+test('?trigger= reaches the pipeline, absent is null, and an unknown value is a 400 after the key check (CMB-81)', async () => {
+  const calls = [];
+  const { base } = await start({
+    run: async (_config, opts) => {
+      calls.push(opts.trigger);
+      return { verdict, spoken: 'Take the train.' };
+    },
+  });
+  const headers = { [KEY_HEADER]: SECRET };
+
+  assert.equal((await fetch(`${base}/verdict`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/verdict?trigger=poll`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/verdict?notify=1&trigger=schedule`, { headers })).status, 200);
+  assert.deepEqual(calls, [null, 'poll', 'schedule']);
+
+  const bad = await fetch(`${base}/verdict?trigger=cron`, { headers });
+  assert.equal(bad.status, 400);
+  assert.match((await bad.json()).error, /phone, schedule, poll/);
+  assert.equal(calls.length, 3);
+
+  assert.equal((await fetch(`${base}/verdict?trigger=cron`)).status, 401);
+});
+
 // /arrived (CMB-41): the phone reports reaching the lot or the office door, so
 // a verdict row can be scored against what the trip actually took.
 

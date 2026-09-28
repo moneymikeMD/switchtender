@@ -17,6 +17,7 @@ import {
   logVerdict,
   tokenFromEnvOrMetadata,
   getLastChoice,
+  TRIGGERS,
   ARRIVALS_HEADER,
   ARRIVAL_PLACES,
   ARRIVAL_CHOICES,
@@ -220,6 +221,34 @@ test('getLastChoice on an empty column is ok:true with choice null, not an error
   const fetchImpl = async () => jsonResponse(200, {});
   const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
   assert.deepEqual(result, { ok: true, choice: null, error: null });
+});
+
+// Two columns are read: the one asked about, and trigger, so hourly samples
+// (CMB-81) can be skipped. A stub answers each by the column in its range.
+const byColumn = (columns) => async (url) => {
+  const column = decodeURIComponent(String(url)).match(/'!([A-Z]+)2:/)[1];
+  const answer = columns[column] ?? { values: [] };
+  return typeof answer === 'number' ? jsonResponse(answer, { error: { message: `status ${answer}` } }) : jsonResponse(200, answer);
+};
+
+test('trigger is the last column, and a poll sample is one of the known triggers', () => {
+  assert.equal(FULL_HEADER.at(-1), 'trigger');
+  assert.equal(FULL_HEADER.indexOf('trigger'), 64, 'column BM on the live tab');
+  assert.deepEqual(TRIGGERS, ['phone', 'schedule', 'poll']);
+});
+
+test('getLastChoice skips hourly samples and keeps rows logged before the trigger column existed', async () => {
+  const fetchImpl = byColumn({ AC: { values: [['drive'], ['transit'], ['drive'], ['drive']] }, BM: { values: [[], ['schedule'], ['poll'], ['poll']] } });
+  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
+  assert.deepEqual(result, { ok: true, choice: 'transit', error: null });
+});
+
+test('getLastChoice on a tab narrower than the trigger column (a 400) reads every row; any other failure is reported', async () => {
+  const narrow = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl: byColumn({ AC: { values: [['drive']] }, BM: 400 }) });
+  assert.deepEqual(narrow, { ok: true, choice: 'drive', error: null });
+  const broken = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl: byColumn({ AC: { values: [['drive']] }, BM: 500 }) });
+  assert.equal(broken.ok, false);
+  assert.equal(broken.choice, null);
 });
 
 test('getLastChoice reports a failed read as ok:false without throwing', async () => {
@@ -459,6 +488,15 @@ test('lastVerdictAt finds the last verdict of that local day, and nothing on a d
   const broken = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl: async () => jsonResponse(500, {}) });
   assert.equal(broken.ok, false);
   assert.equal(broken.timestamp, null);
+});
+
+test('lastVerdictAt attaches an arrival to the drive, not to a later hourly sample (CMB-81)', async () => {
+  const fetchImpl = byColumn({
+    A: { values: [['2026-09-22T07:00:04-04:00'], ['2026-09-22T08:28:15-04:00'], ['2026-09-22T08:30:02-04:00'], ['2026-09-22T09:30:01-04:00']] },
+    BM: { values: [['schedule'], [], ['poll'], ['poll']] },
+  });
+  const found = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl });
+  assert.deepEqual(found, { ok: true, timestamp: '2026-09-22T08:28:15-04:00', error: null });
 });
 
 test('an arrival already logged for that place today is seen; a tab that does not exist yet is not an error', async () => {

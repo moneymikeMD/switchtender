@@ -30,6 +30,7 @@ OP_VAULT="Software_Development"
 OP_SHARED_ITEM="Switchtender shared secret"
 OP_NTFY_ITEM="Switchtender ntfy topic"
 SCHEDULER_JOB="switchtender-verdict-check"
+SAMPLE_JOB="switchtender-verdict-sample"
 
 update_config=0
 rotate_secret=0
@@ -215,39 +216,48 @@ url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'valu
 log "deployed: ${url}"
 log "check: curl -s -o /dev/null -w '%{http_code}\n' ${url}/health"
 
+# Cloud Scheduler has no way to read a header value out of Secret Manager for
+# an HTTP target, so the shared secret is written into each job definition
+# (readable by anyone with Cloud Scheduler access on this project, i.e. the
+# owner alone -- same trust boundary as everything else here).
+shared_secret_value="$(op_value "$shared_path")"
+
+upsert_scheduler_job() {
+  local job="$1" uri="$2" schedule="$3"
+  if gcloud scheduler jobs describe "$job" --location "$REGION" --quiet >/dev/null 2>&1; then
+    log "updating Cloud Scheduler job ${job}"
+    # update takes --update-headers; only create takes --headers. With the
+    # wrong one gcloud rejects the call AND echoes every argument, which puts
+    # the shared secret in the output (CLAUDE.md rule 7).
+    gcloud scheduler jobs update http "$job" \
+      --location "$REGION" \
+      --uri "$uri" \
+      --http-method GET \
+      --update-headers "X-Switchtender-Key=${shared_secret_value}" \
+      --schedule "$schedule" \
+      --time-zone "America/New_York" \
+      --quiet >/dev/null
+  else
+    log "creating Cloud Scheduler job ${job}"
+    gcloud scheduler jobs create http "$job" \
+      --location "$REGION" \
+      --uri "$uri" \
+      --http-method GET \
+      --headers "X-Switchtender-Key=${shared_secret_value}" \
+      --schedule "$schedule" \
+      --time-zone "America/New_York" \
+      --quiet >/dev/null
+  fi
+  log "scheduler: ${job} '${schedule}' America/New_York -> ${uri}"
+}
+
 # Weekday morning push check (CMB-36, CMB-37). The geofence-triggered phone
 # call and any manual poll never set ?notify=1, so this scheduled call is the
 # only trigger for a push, and it fires whether or not the owner actually
-# drives that day (owner decision 2026-09-18) -- a fixed clock time, not tied
-# to the geofence. Cloud Scheduler has no way to read a header value out of
-# Secret Manager for an HTTP target, so the shared secret is written into the
-# job definition itself (readable by anyone with Cloud Scheduler access on
-# this project, i.e. the owner alone -- same trust boundary as everything
-# else here).
-shared_secret_value="$(op_value "$shared_path")"
-scheduler_target="${url}/verdict?notify=1"
-if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --quiet >/dev/null 2>&1; then
-  log "updating Cloud Scheduler job ${SCHEDULER_JOB}"
-  # update takes --update-headers; only create takes --headers. With the
-  # wrong one gcloud rejects the call AND echoes every argument, which puts
-  # the shared secret in the output (CLAUDE.md rule 7).
-  gcloud scheduler jobs update http "$SCHEDULER_JOB" \
-    --location "$REGION" \
-    --uri "$scheduler_target" \
-    --http-method GET \
-    --update-headers "X-Switchtender-Key=${shared_secret_value}" \
-    --schedule "0 7 * * 1-5" \
-    --time-zone "America/New_York" \
-    --quiet >/dev/null
-else
-  log "creating Cloud Scheduler job ${SCHEDULER_JOB}"
-  gcloud scheduler jobs create http "$SCHEDULER_JOB" \
-    --location "$REGION" \
-    --uri "$scheduler_target" \
-    --http-method GET \
-    --headers "X-Switchtender-Key=${shared_secret_value}" \
-    --schedule "0 7 * * 1-5" \
-    --time-zone "America/New_York" \
-    --quiet >/dev/null
-fi
-log "scheduler: weekdays 7:00 AM America/New_York -> ${scheduler_target}"
+# drives that day (owner decision 2026-09-18).
+upsert_scheduler_job "$SCHEDULER_JOB" "${url}/verdict?notify=1&trigger=schedule" "0 7 * * 1-5"
+
+# Hourly samples, 5:30 to 10:30 on weekdays (CMB-81), so the log grows on
+# days nobody drives. trigger=poll keeps them out of the push comparison and
+# the arrival join. The evening window waits for the outbound trip (CMB-82).
+upsert_scheduler_job "$SAMPLE_JOB" "${url}/verdict?trigger=poll" "30 5-10 * * 1-5"
