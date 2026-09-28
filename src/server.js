@@ -21,7 +21,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, ConfigError } from './config.js';
-import { RouteError, START_POINTS } from './routes.js';
+import { RouteError, START_POINTS, DIRECTIONS } from './routes.js';
 import { runVerdict } from './engine.js';
 import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
 import { pushIfChanged } from './notify.js';
@@ -174,10 +174,22 @@ export function createServer({
     // appends its own row, or the comparison would be against itself.
     const notify = url.searchParams.get('notify') === '1';
 
+    // The trip home (CMB-82) is logged for analysis and never spoken, so it
+    // has no push to make either.
+    const direction = url.searchParams.get('direction') ?? 'inbound';
+    if (!DIRECTIONS.includes(direction)) {
+      send(res, 400, { error: `direction must be one of ${DIRECTIONS.join(', ')}` });
+      return pathname;
+    }
+    if (direction === 'outbound' && notify) {
+      send(res, 400, { error: 'notify is for the inbound trip only' });
+      return pathname;
+    }
+
     const computedAt = now();
     try {
       const [{ verdict, spoken, logged = null }, prior] = await withTimeout(
-        Promise.all([run(config, { now: computedAt, from, trigger }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
+        Promise.all([run(config, { now: computedAt, from, trigger, direction }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
         timeoutMs,
       );
       // A failed sheet write is the one failure nobody would otherwise see
@@ -192,7 +204,7 @@ export function createServer({
         if (!notified.ok) logger(`notify failed: ${notified.error}`);
       }
 
-      send(res, 200, { spoken, verdict, computedAt: computedAt.toISOString(), logged, notified });
+      send(res, 200, { spoken: spoken ?? null, verdict, computedAt: computedAt.toISOString(), logged, notified });
     } catch (error) {
       if (error instanceof RouteError) {
         send(res, 503, { error: 'lookup failed' });

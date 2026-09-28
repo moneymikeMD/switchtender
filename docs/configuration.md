@@ -97,7 +97,7 @@ verdict and the fork. This wants verifying in the car at real speed.
 | --- | --- |
 | `transit_wins_ties` | A tie means the model cannot tell the options apart. The train is the one whose duration does not degrade while you sit in it. |
 | `minimum_drive_margin_minutes` | Floor on how much faster driving must be, zero or more. The required margin scales above this with the congestion signal. |
-| `assumed_evening_departure` | `"HH:MM"` on a 24-hour clock. Used only when something about the evening is already known. |
+| `assumed_evening_departure` | `"HH:MM"` on a 24-hour clock. Used only when something about the evening is already known. The trip home (`direction=outbound`) uses its actual departure instead. |
 
 Every value is checked at startup: a time zone the runtime does not know, a
 `nan` or `inf` where a number belongs, a clock time that is not `HH:MM`, or a

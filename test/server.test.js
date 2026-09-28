@@ -278,6 +278,31 @@ test('?trigger= reaches the pipeline, absent is null, and an unknown value is a 
   assert.equal((await fetch(`${base}/verdict?trigger=cron`)).status, 401);
 });
 
+test('?direction=outbound reaches the pipeline and answers with no spoken line; notify is refused on it (CMB-82)', async () => {
+  const calls = [];
+  const { base } = await start({
+    run: async (_config, opts) => {
+      calls.push(opts.direction);
+      return { verdict, spoken: opts.direction === 'outbound' ? null : 'Take the train.' };
+    },
+  });
+  const headers = { [KEY_HEADER]: SECRET };
+
+  assert.equal((await fetch(`${base}/verdict`, { headers })).status, 200);
+  const home = await fetch(`${base}/verdict?direction=outbound&trigger=poll`, { headers });
+  assert.equal(home.status, 200);
+  assert.equal((await home.json()).spoken, null);
+  assert.deepEqual(calls, ['inbound', 'outbound']);
+
+  const bad = await fetch(`${base}/verdict?direction=sideways`, { headers });
+  assert.equal(bad.status, 400);
+  assert.match((await bad.json()).error, /inbound, outbound/);
+  assert.equal((await fetch(`${base}/verdict?direction=outbound&notify=1`, { headers })).status, 400);
+  assert.equal(calls.length, 2);
+
+  assert.equal((await fetch(`${base}/verdict?direction=sideways`)).status, 401);
+});
+
 // /arrived (CMB-41): the phone reports reaching the lot or the office door, so
 // a verdict row can be scored against what the trip actually took.
 

@@ -19,6 +19,10 @@
 // On request (CMB-30) the same three legs are measured from the origin
 // instead, for a whole-trip estimate before leaving home. The rule is the
 // same; only the starting point moves.
+//
+// The outbound trip (CMB-82) runs the same legs in reverse, for the log only:
+// drive from the parking spot back to the fork, or ride from the destination
+// to the park-and-ride and drive from there, leaving when the train gets in.
 
 import { decodePolyline, cumulativeDistances } from './polyline.js';
 
@@ -141,13 +145,15 @@ async function computeRoute(body, fieldMask, { apiKey, fetchImpl = fetch, timeou
   return route;
 }
 
-export const driveRequest = (from, to) => ({
+/** A drive request. `departureTime` (ISO) asks for predicted traffic later; without it, traffic now. */
+export const driveRequest = (from, to, { departureTime = null } = {}) => ({
   origin: waypoint(from),
   destination: waypoint(to),
   travelMode: 'DRIVE',
   routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
   extraComputations: ['TRAFFIC_ON_POLYLINE'],
   polylineQuality: 'HIGH_QUALITY',
+  ...(departureTime ? { departureTime } : {}),
 });
 
 // The transit leg is Metrorail from the lot, so the planner is told to use
@@ -171,6 +177,9 @@ export const transitRequest = (from, to, { departureTime = null } = {}) => ({
 /** Where to start measuring: the fork for the verdict, the origin for a whole-trip estimate. */
 export const START_POINTS = Object.freeze(['fork', 'origin']);
 
+/** Which way the trip runs: inbound to the destination, or outbound from it (CMB-82). */
+export const DIRECTIONS = Object.freeze(['inbound', 'outbound']);
+
 /**
  * Turn raw API routes into the two comparable options.
  *
@@ -178,6 +187,8 @@ export const START_POINTS = Object.freeze(['fork', 'origin']);
  * at, in minutes, plus the start place's walk to the car when measuring from
  * the origin. Each is folded into its option's total so both options end at
  * the same door, and kept apart so the log can tell driving from walking.
+ *
+ * Outbound, each walk is taken at the same place, so it is the same sum.
  *
  * @param walks.start      before the first leg (origin only)
  * @param walks.driveEnd   where the drive-through leg stops: parking, else destination
@@ -219,17 +230,47 @@ export function buildOptions({ driveThrough, driveToParkAndRide, transit }, walk
   };
 }
 
+const at = (now, seconds) => new Date(now.getTime() + seconds * 1000).toISOString();
+
+async function inboundLegs({ start, driveTarget, pnr, destination, walks, now }, request) {
+  const [driveThrough, driveToParkAndRide] = await Promise.all([
+    request(driveRequest(start, driveTarget), DRIVE_FIELDS),
+    request(driveRequest(start, pnr), DRIVE_FIELDS),
+  ]);
+  const platformAt = at(now, walks.start * 60 + parseDuration(driveToParkAndRide.duration) + walks.platform * 60);
+  const transit = await request(transitRequest(pnr, destination, { departureTime: platformAt }), TRANSIT_FIELDS);
+  return { driveThrough, driveToParkAndRide, transit };
+}
+
+// The drive from the lot waits for the train: it leaves when the rider has
+// walked from the platform to the car, and meets the traffic of that moment.
+async function outboundLegs({ start: end, driveTarget, pnr, destination, walks, now }, request) {
+  const [driveThrough, transit] = await Promise.all([
+    request(driveRequest(driveTarget, end, { departureTime: at(now, walks.driveEnd * 60) }), DRIVE_FIELDS),
+    request(transitRequest(destination, pnr, { departureTime: at(now, walks.transitEnd * 60) }), TRANSIT_FIELDS),
+  ]);
+  const carAt = at(now, (walks.transitEnd + walks.platform) * 60 + parseDuration(transit.duration));
+  const driveToParkAndRide = await request(driveRequest(pnr, end, { departureTime: carAt }), DRIVE_FIELDS);
+  return { driveThrough, driveToParkAndRide, transit };
+}
+
 /**
  * Fetch both options. Requires network.
  *
- * @param options.from  'fork' (default) measures the onward legs for the
- *                      verdict; 'origin' measures the whole trip (CMB-30).
- * @param options.now   Date the driver sets off; the transit leg departs
- *                      this plus the drive to the lot plus the buffer.
+ * @param options.from       'fork' (default) measures the onward legs for the
+ *                           verdict; 'origin' measures the whole trip (CMB-30).
+ *                           Outbound, it is where the trip ends instead.
+ * @param options.direction  'inbound' (default), or 'outbound' for the trip
+ *                           home from the destination (CMB-82).
+ * @param options.now        Date the driver sets off; the transit leg departs
+ *                           this plus the drive to the lot plus the buffer.
  */
-export async function computeOptions(config, apiKey, fetchImpl = fetch, { from = 'fork', now = new Date() } = {}) {
+export async function computeOptions(config, apiKey, fetchImpl = fetch, { from = 'fork', direction = 'inbound', now = new Date() } = {}) {
   if (!START_POINTS.includes(from)) {
     throw new RouteError(`routes: unknown start point ${JSON.stringify(from)}`);
+  }
+  if (!DIRECTIONS.includes(direction)) {
+    throw new RouteError(`routes: unknown direction ${JSON.stringify(direction)}`);
   }
   const { origin, decision_point: fork, destination, park_and_ride: pnr, parking } = config.route;
   const start = from === 'origin' ? origin : fork;
@@ -242,16 +283,12 @@ export async function computeOptions(config, apiKey, fetchImpl = fetch, { from =
     transitEnd: destination.addl_walk_mins ?? 0,
   };
 
-  const [driveThrough, driveToParkAndRide] = await Promise.all([
-    computeRoute(driveRequest(start, driveTarget), DRIVE_FIELDS, { apiKey, fetchImpl }),
-    computeRoute(driveRequest(start, pnr), DRIVE_FIELDS, { apiKey, fetchImpl }),
-  ]);
-  const platformAt = new Date(now.getTime() + (walks.start * 60 + parseDuration(driveToParkAndRide.duration) + walks.platform * 60) * 1000);
-  const transit = await computeRoute(transitRequest(pnr, destination, { departureTime: platformAt.toISOString() }), TRANSIT_FIELDS, { apiKey, fetchImpl });
-
-  const options = buildOptions({ driveThrough, driveToParkAndRide, transit }, walks);
+  const request = (body, fieldMask) => computeRoute(body, fieldMask, { apiKey, fetchImpl });
+  const legs = direction === 'outbound' ? outboundLegs : inboundLegs;
+  const options = buildOptions(await legs({ start, driveTarget, pnr, destination, walks, now }, request), walks);
   options.measuredFrom = from;
-  options.startLabel = start.label ?? null;
+  options.direction = direction;
+  options.startLabel = (direction === 'outbound' ? destination : start).label ?? null;
   options.parkingLabel = parking?.label ?? null;
   return options;
 }

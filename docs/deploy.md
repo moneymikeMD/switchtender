@@ -2,8 +2,8 @@
 
 `src/server.js` serves `GET /verdict` on Cloud Run in project
 `commuter-bot-501717`, region `us-east4`, service `switchtender`. It scales to
-zero and is called about eight times a weekday: the phone at the fork, the
-7:00 push check, and six hourly samples. Cloud Run's own IAM gate is off
+zero and is called about thirteen times a weekday: the phone at the fork, the
+7:00 push check, and eleven hourly samples. Cloud Run's own IAM gate is off
 (`--allow-unauthenticated`) because a phone shortcut cannot mint a Google
 identity token; the `X-Switchtender-Key` header, compared in constant time, is
 the authentication. `/health` is the only route served without it.
@@ -139,14 +139,35 @@ alone, same trust boundary as everything else here. Re-running
 `scripts/deploy-cloud-run.sh` updates the job in place if the service URL or
 secret ever changes.
 
-## Hourly samples (CMB-81)
+## Hourly samples (CMB-81, CMB-82)
 
 The phone logs a verdict only on days the owner drives in, three or four
-rows a week. A second Cloud Scheduler job, `switchtender-verdict-sample`,
-calls `/verdict?trigger=poll` at half past each hour from 5:30 to 10:30 AM
-on weekdays (`30 5-10 * * 1-5`, `America/New_York`), so the log also grows on
-days nobody drives. `scripts/deploy-cloud-run.sh` creates or updates it next
-to the push job, with the same header.
+rows a week. Two more Cloud Scheduler jobs sample the commute every hour on
+weekdays (`America/New_York`), so the log also grows on days nobody drives:
+
+| Job | Schedule | Calls |
+| --- | --- | --- |
+| `switchtender-verdict-sample` | `30 5-10 * * 1-5`, 5:30 to 10:30 AM | `/verdict?trigger=poll` |
+| `switchtender-verdict-sample-evening` | `30 15-19 * * 1-5`, 3:30 to 7:30 PM | `/verdict?trigger=poll&direction=outbound` |
+
+`scripts/deploy-cloud-run.sh` creates or updates both next to the push job,
+with the same header. With the push job that is three, which is Cloud
+Scheduler's whole free tier for the billing account; a fourth job anywhere on
+it costs $0.10 a month.
+
+### The trip home
+
+`direction=outbound` measures the same two options in reverse, fork as the
+far end: drive from the parking spot (or the destination) to the fork, or
+ride from the destination to the park-and-ride and drive on from there. The
+drive from the lot is asked for at the moment the rider reaches the car, so
+it meets the traffic of that moment. `from=origin` ends the trip at home.
+The events signal's evening window is centred on the actual departure, not
+`assumed_evening_departure`.
+
+The trip home is data, never advice: the response's `spoken` is null,
+`notify=1` is a 400 on it, and the `direction` column reads `outbound`. The
+rule still decides, so `choice` and the margins are logged for analysis.
 
 Every row says who asked for it in the `trigger` column: `poll` for a
 sample, `schedule` for the 7:00 push check, `phone` when a caller sends it,
@@ -154,16 +175,16 @@ and empty when nobody said (the fork macro today, and every row logged
 before 2026-09-28). Any other value is a 400. Samples never set `notify`.
 
 Samples are for analysis, not decisions. The two readers that look for the
-last real call skip `poll` rows: the push check's previous choice, and the
-verdict an arrival is attached to. Filter them the same way when scoring a
+last real call skip `poll` rows and `outbound` rows: the push check's
+previous choice, and the verdict an arrival is attached to. Filter them the same way when scoring a
 drive, and keep them when studying how the road behaves across the morning.
 
-Cost: about 30 extra verdicts a week, which keeps Routes inside its free
-calls (`docs/cost-routes.md`). An evening window waits for the outbound
-trip, CMB-82: today the service only computes the way in.
+Cost: about 55 extra verdicts a week, which keeps Routes inside its free
+calls (`docs/cost-routes.md`).
 
 Run one by hand with
-`gcloud scheduler jobs run switchtender-verdict-sample --location us-east4`.
+`gcloud scheduler jobs run switchtender-verdict-sample --location us-east4`
+(or `...-sample-evening`).
 
 ## Logs
 

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { parseDuration, summariseCongestion, buildOptions, computeOptions, driveRequest, transitRequest, RouteError } from '../src/routes.js';
+import { parseDuration, summariseCongestion, buildOptions, computeOptions, driveRequest, transitRequest, RouteError, DIRECTIONS } from '../src/routes.js';
 import { decodePolyline, cumulativeDistances } from '../src/polyline.js';
 
 const fixture = JSON.parse(readFileSync('test/fixtures/routes-congested.json', 'utf8'));
@@ -242,6 +242,78 @@ test('computeOptions from the origin starts both drives at home; the transit leg
   assert.equal(options.startLabel, 'home');
 
   await assert.rejects(() => computeOptions(config, 'k', stub, { from: 'garage' }), RouteError);
+});
+
+test('a drive request carries departureTime only when asked (CMB-82)', () => {
+  assert.equal('departureTime' in driveRequest({ lat: 1, lon: 2 }, { lat: 3, lon: 4 }), false);
+  const later = driveRequest({ lat: 1, lon: 2 }, { lat: 3, lon: 4 }, { departureTime: '2026-09-17T22:00:00.000Z' });
+  assert.equal(later.departureTime, '2026-09-17T22:00:00.000Z');
+  assert.equal(later.routingPreference, 'TRAFFIC_AWARE_OPTIMAL');
+});
+
+// The outbound trip (CMB-82): legs reversed, the drive from the lot waiting
+// for the train. Places are told apart by latitude.
+const outboundConfig = {
+  route: {
+    origin: { lat: 1, lon: 1, label: 'home', addl_walk_mins: 2 },
+    decision_point: { lat: 3, lon: 3, label: 'fork' },
+    park_and_ride: { lat: 5, lon: 5, label: 'lot', addl_walk_mins: 5 },
+    parking: { lat: 9, lon: 9, label: 'garage', addl_walk_mins: 4 },
+    destination: { lat: 7, lon: 7, label: 'door', addl_walk_mins: 1 },
+  },
+};
+const lat = (place) => place.location.latLng.latitude;
+
+function outboundStub(seen) {
+  return async (_url, init) => {
+    const body = JSON.parse(init.body);
+    seen.push(body);
+    const which = body.travelMode === 'TRANSIT' ? fixture.transit : lat(body.origin) === 9 ? fixture.driveThrough : fixture.driveToParkAndRide;
+    return { ok: true, json: async () => ({ routes: [which] }) };
+  };
+}
+
+test('outbound, the drive leaves the parking spot for the fork and the train leaves the door for the lot (CMB-82)', async () => {
+  const seen = [];
+  const now = new Date('2026-09-17T21:30:00Z');
+  const options = await computeOptions(outboundConfig, 'k', outboundStub(seen), { now, direction: 'outbound' });
+  assert.equal(seen.length, 3);
+  const [through, transit] = seen;
+  assert.deepEqual([lat(through.origin), lat(through.destination)], [9, 3]);
+  assert.equal(through.departureTime, '2026-09-17T21:34:00.000Z', 'after the 4 min walk to the garage');
+  assert.equal(transit.travelMode, 'TRANSIT');
+  assert.deepEqual([lat(transit.origin), lat(transit.destination)], [7, 5]);
+  assert.equal(transit.departureTime, '2026-09-17T21:31:00.000Z', 'after the 1 min walk out of the door');
+
+  // Sent after the train answered: 1 min door + 1500 s ride + 5 min platform to car.
+  const fromLot = seen[2];
+  assert.equal(fromLot.travelMode, 'DRIVE');
+  assert.deepEqual([lat(fromLot.origin), lat(fromLot.destination)], [5, 3]);
+  assert.equal(fromLot.departureTime, '2026-09-17T22:01:00.000Z');
+
+  // Every walk is taken once, at its place, so the totals match the way in.
+  assert.equal(options.driveThrough.totalSeconds, 2700 + 240);
+  assert.equal(options.parkAndRide.totalSeconds, 60 + 1500 + 300 + 600);
+  assert.equal(options.direction, 'outbound');
+  assert.equal(options.startLabel, 'door');
+  assert.equal(options.measuredFrom, 'fork');
+});
+
+test('outbound from the origin ends the trip at home and adds its walk (CMB-82)', async () => {
+  const seen = [];
+  const options = await computeOptions(outboundConfig, 'k', outboundStub(seen), { direction: 'outbound', from: 'origin' });
+  for (const b of seen.filter((b) => b.travelMode === 'DRIVE')) assert.equal(lat(b.destination), 1);
+  assert.equal(options.driveThrough.totalSeconds, 120 + 2700 + 240);
+});
+
+test('the inbound trip is unchanged and says so; an unknown direction is a RouteError', async () => {
+  const seen = [];
+  const options = await computeOptions(outboundConfig, 'k', outboundStub(seen));
+  assert.equal(options.direction, 'inbound');
+  assert.equal(lat(seen[0].origin), 3);
+  assert.equal('departureTime' in seen[0], false);
+  assert.deepEqual(DIRECTIONS, ['inbound', 'outbound']);
+  await assert.rejects(() => computeOptions(outboundConfig, 'k', outboundStub([]), { direction: 'sideways' }), RouteError);
 });
 
 test('a walk from the parking spot is added to the drive-through total and kept apart (CMB-31)', () => {

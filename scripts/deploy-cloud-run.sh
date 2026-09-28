@@ -31,6 +31,7 @@ OP_SHARED_ITEM="Switchtender shared secret"
 OP_NTFY_ITEM="Switchtender ntfy topic"
 SCHEDULER_JOB="switchtender-verdict-check"
 SAMPLE_JOB="switchtender-verdict-sample"
+EVENING_SAMPLE_JOB="switchtender-verdict-sample-evening"
 
 update_config=0
 rotate_secret=0
@@ -257,7 +258,9 @@ upsert_scheduler_job() {
 # drives that day (owner decision 2026-09-18).
 upsert_scheduler_job "$SCHEDULER_JOB" "${url}/verdict?notify=1&trigger=schedule" "0 7 * * 1-5"
 
-# Hourly samples, 5:30 to 10:30 on weekdays (CMB-81), so the log grows on
-# days nobody drives. trigger=poll keeps them out of the push comparison and
-# the arrival join. The evening window waits for the outbound trip (CMB-82).
+# Hourly samples on weekdays, so the log grows on days nobody drives:
+# inbound 5:30 to 10:30 (CMB-81), the trip home 3:30 to 7:30 (CMB-82).
+# trigger=poll keeps them out of the push comparison and the arrival join.
+# Three jobs is Cloud Scheduler's whole free tier for the billing account.
 upsert_scheduler_job "$SAMPLE_JOB" "${url}/verdict?trigger=poll" "30 5-10 * * 1-5"
+upsert_scheduler_job "$EVENING_SAMPLE_JOB" "${url}/verdict?trigger=poll&direction=outbound" "30 15-19 * * 1-5"
