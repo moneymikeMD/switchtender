@@ -252,11 +252,10 @@ upsert_scheduler_job() {
   log "scheduler: ${job} '${schedule}' America/New_York -> ${uri}"
 }
 
-# Weekday morning push check (CMB-36, CMB-37). The geofence-triggered phone
-# call and any manual poll never set ?notify=1, so this scheduled call is the
-# only trigger for a push, and it fires whether or not the owner actually
-# drives that day (owner decision 2026-09-18).
-upsert_scheduler_job "$SCHEDULER_JOB" "${url}/verdict?notify=1&trigger=schedule" "0 7 * * 1-5"
+# Office-day push (CMB-83): 7:30 Monday to Wednesday, every time, measured
+# from home, for a look at the trip on sitting down in the car. Nothing else
+# sets ?notify=1.
+upsert_scheduler_job "$SCHEDULER_JOB" "${url}/verdict?notify=1&trigger=schedule&from=origin" "30 7 * * 1-3"
 
 # Hourly samples on weekdays, so the log grows on days nobody drives:
 # inbound 5:30 to 10:30 (CMB-81), the trip home 3:30 to 7:30 (CMB-82).

@@ -126,8 +126,8 @@ export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);
 export const ENGINE_VERSION = 'switchtender/1.0.0';
 
 // What a `trigger` cell may hold. `poll` rows are hourly samples nobody acted
-// on, so the readers that look for the last real call skip them, and they
-// skip the outbound trip (CMB-82) the same way.
+// on, so the arrival join skips them, and skips the outbound trip (CMB-82)
+// the same way.
 export const TRIGGERS = Object.freeze(['phone', 'schedule', 'poll']);
 
 // Meteorological seasons, northern hemisphere. The log is for a commute in
@@ -311,7 +311,6 @@ function columnLetter(index) {
   return letters;
 }
 
-const CHOICE_COLUMN = columnLetter(HEADER.indexOf('choice'));
 const TRIGGER_COLUMN = columnLetter(FULL_HEADER.indexOf('trigger'));
 const DIRECTION_COLUMN = columnLetter(HEADER.indexOf('direction'));
 
@@ -326,24 +325,6 @@ async function skippedRows({ sheetId, tab, token, fetchImpl, signal }) {
   if (!direction.ok) return { ok: false, error: direction.error };
   const matching = (values, value) => (values ?? []).flatMap((row, i) => (row?.[0] === value ? [i] : []));
   return { ok: true, rows: new Set([...matching(trigger.ok ? trigger.body?.values : [], 'poll'), ...matching(direction.body?.values, 'outbound')]) };
-}
-
-/** The most recent logged `choice` (CMB-37), ignoring hourly samples and the trip home. Null means never logged or the read failed, not "clear". */
-export async function getLastChoice({ sheetId, tab, token, fetchImpl = fetch, signal }) {
-  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${CHOICE_COLUMN}2:${CHOICE_COLUMN}`)}`;
-  const [result, skipped] = await Promise.all([
-    sheetsCall(fetchImpl, token, 'GET', url, undefined, signal),
-    skippedRows({ sheetId, tab, token, fetchImpl, signal }),
-  ]);
-  if (!result.ok) return { ok: false, choice: null, error: result.error };
-  if (!skipped.ok) return { ok: false, choice: null, error: skipped.error };
-  const values = result.body?.values ?? [];
-  for (let i = values.length - 1; i >= 0; i -= 1) {
-    if (skipped.rows.has(i)) continue;
-    const value = values[i]?.[0];
-    if (typeof value === 'string' && value) return { ok: true, choice: value, error: null };
-  }
-  return { ok: true, choice: null, error: null };
 }
 
 const isPrefix = (shorter, longer) => shorter.length <= longer.length && shorter.every((v, i) => v === longer[i]);

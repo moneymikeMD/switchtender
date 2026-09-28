@@ -2,8 +2,8 @@
 
 `src/server.js` serves `GET /verdict` on Cloud Run in project
 `commuter-bot-501717`, region `us-east4`, service `switchtender`. It scales to
-zero and is called about thirteen times a weekday: the phone at the fork, the
-7:00 push check, and eleven hourly samples. Cloud Run's own IAM gate is off
+zero and is called about thirteen times a weekday: eleven hourly samples, the
+phone at the fork, and the 7:30 push on office days. Cloud Run's own IAM gate is off
 (`--allow-unauthenticated`) because a phone shortcut cannot mint a Google
 identity token; the `X-Switchtender-Key` header, compared in constant time, is
 the authentication. `/health` is the only route served without it.
@@ -104,19 +104,24 @@ to `verdicts.timestamp`, and pool `choice_taken = 'drive'` rows separately from
 transit ones: an office arrival after transit covers park, wait, ride and walk,
 none of which `drive_minutes` models.
 
-## Weekday morning push (CMB-36, CMB-37)
+## Office-day push (CMB-36, CMB-37, CMB-83)
 
-A Cloud Scheduler job `switchtender-verdict-check`, weekdays 7:00 AM
-`America/New_York`, calls `/verdict?notify=1&trigger=schedule`. The notify flag is the only
-thing that turns on the push check — the phone's geofence-triggered call and
-`make poll`/`make poll-local` never set it, so a push notification fires at
-most once a day, only from this scheduled call, whether or not the commute
-actually happens that day (owner decision 2026-09-18).
+A Cloud Scheduler job `switchtender-verdict-check` runs at 7:30 AM Monday to
+Wednesday (`30 7 * * 1-3`, `America/New_York`), the owner's permanent office
+days. It calls `/verdict?notify=1&trigger=schedule&from=origin`, so the owner
+can glance at the trip on sitting down in the car (owner decision
+2026-09-28). The notify flag is the only thing that sends a push. The phone's
+geofence call, the hourly samples, and `make poll`/`make poll-local` never
+set it.
 
-The server reads the `choice` most recently logged to the sheet (before this
-call's own row lands, or the comparison would be a row against itself) and,
-if it differs from this call's `choice`, posts the spoken line to
-`https://ntfy.sh/$NTFY_TOPIC`. `ntfy.sh` is the public instance (CMB-36):
+Every call pushes, whatever the verdict. The title says the choice
+(`switchtender: keep driving` or `switchtender: take the train`) and the body
+is the spoken line. `from=origin` measures the whole trip from home, so the
+minutes and the arrival clock cover the drive about to start; the row logs
+`measured_from = origin`. On office days the 7:30 poll sample also runs, so
+those mornings carry two 7:30 rows, `poll` and `schedule`.
+
+The push goes to `https://ntfy.sh/$NTFY_TOPIC`. `ntfy.sh` is the public instance (CMB-36):
 self-hosting was rejected because it would mean this scale-to-zero public
 service reaching back into a private network. The free tier has no
 per-topic auth, so `NTFY_TOPIC` — a long random slug from `openssl rand -hex
@@ -127,10 +132,9 @@ the ntfy Android app (the Google Play build; confirmed FCM-backed, so
 delivery works with the app closed) to receive the push.
 
 The response body's `notified` field (`null` outside `?notify=1`, otherwise
-`{ ok, sent, error }`) says what happened: `sent: false` covers both "nothing
-to say" (no topic configured, no prior choice on record, or no change) and a
-failed push, which is also logged server-side (never crashes the request —
-a push is a courtesy, not part of the verdict).
+`{ ok, sent, error }`) says what happened: `sent: false` covers both "no
+topic configured" and a failed push, which is also logged server-side (never
+crashes the request — a push is a courtesy, not part of the verdict).
 
 Cloud Scheduler has no way to pull a header value from Secret Manager for an
 HTTP target, so the shared secret is written into the job definition itself,
@@ -170,13 +174,12 @@ The trip home is data, never advice: the response's `spoken` is null,
 rule still decides, so `choice` and the margins are logged for analysis.
 
 Every row says who asked for it in the `trigger` column: `poll` for a
-sample, `schedule` for the 7:00 push check, `phone` when a caller sends it,
+sample, `schedule` for the 7:30 push, `phone` when a caller sends it,
 and empty when nobody said (the fork macro today, and every row logged
 before 2026-09-28). Any other value is a 400. Samples never set `notify`.
 
-Samples are for analysis, not decisions. The two readers that look for the
-last real call skip `poll` rows and `outbound` rows: the push check's
-previous choice, and the verdict an arrival is attached to. Filter them the same way when scoring a
+Samples are for analysis, not decisions. The arrival join, which looks for
+the day's last real call, skips `poll` rows and `outbound` rows. Filter them the same way when scoring a
 drive, and keep them when studying how the road behaves across the morning.
 
 Cost: about 55 extra verdicts a week, which keeps Routes inside its free

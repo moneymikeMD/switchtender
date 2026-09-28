@@ -16,7 +16,6 @@ import {
   ensureHeader,
   logVerdict,
   tokenFromEnvOrMetadata,
-  getLastChoice,
   TRIGGERS,
   ARRIVALS_HEADER,
   ARRIVAL_PLACES,
@@ -200,31 +199,9 @@ test('appendRow reports a network failure without throwing', async () => {
   assert.match(result.error, /ECONNRESET/);
 });
 
-test('getLastChoice reads the choice column (AC) and returns the last non-empty value', async () => {
-  const calls = [];
-  const fetchImpl = async (url) => {
-    calls.push(url);
-    return jsonResponse(200, { values: [['drive'], ['drive'], ['transit']] });
-  };
-  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
-  assert.deepEqual(result, { ok: true, choice: 'transit', error: null });
-  assert.match(decodeURIComponent(calls[0]), /values\/'verdicts'!AC2:AC$/);
-});
-
-test('getLastChoice skips a trailing blank row (a partial write) and returns the last real value', async () => {
-  const fetchImpl = async () => jsonResponse(200, { values: [['drive'], ['transit'], ['']] });
-  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
-  assert.equal(result.choice, 'transit');
-});
-
-test('getLastChoice on an empty column is ok:true with choice null, not an error', async () => {
-  const fetchImpl = async () => jsonResponse(200, {});
-  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
-  assert.deepEqual(result, { ok: true, choice: null, error: null });
-});
-
-// Two columns are read: the one asked about, and trigger, so hourly samples
-// (CMB-81) can be skipped. A stub answers each by the column in its range.
+// The column asked about is read beside trigger and direction, so hourly
+// samples (CMB-81) and the trip home (CMB-82) can be skipped. A stub answers
+// each by the column in its range.
 const byColumn = (columns) => async (url) => {
   const column = decodeURIComponent(String(url)).match(/'!([A-Z]+)2:/)[1];
   const answer = columns[column] ?? { values: [] };
@@ -237,26 +214,13 @@ test('trigger is the last column, and a poll sample is one of the known triggers
   assert.deepEqual(TRIGGERS, ['phone', 'schedule', 'poll']);
 });
 
-test('getLastChoice skips hourly samples and keeps rows logged before the trigger column existed', async () => {
-  const fetchImpl = byColumn({ AC: { values: [['drive'], ['transit'], ['drive'], ['drive']] }, BM: { values: [[], ['schedule'], ['poll'], ['poll']] } });
-  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
-  assert.deepEqual(result, { ok: true, choice: 'transit', error: null });
-});
-
-test('getLastChoice on a tab narrower than the trigger column (a 400) reads every row; any other failure is reported', async () => {
-  const narrow = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl: byColumn({ AC: { values: [['drive']] }, BM: 400 }) });
-  assert.deepEqual(narrow, { ok: true, choice: 'drive', error: null });
-  const broken = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl: byColumn({ AC: { values: [['drive']] }, BM: 500 }) });
+test('lastVerdictAt on a tab narrower than the trigger column (a 400) reads every row; any other failure is reported', async () => {
+  const at = (fetchImpl) => lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl });
+  const narrow = await at(byColumn({ A: { values: [['2026-09-22T08:28:15-04:00']] }, BM: 400 }));
+  assert.deepEqual(narrow, { ok: true, timestamp: '2026-09-22T08:28:15-04:00', error: null });
+  const broken = await at(byColumn({ A: { values: [['2026-09-22T08:28:15-04:00']] }, BM: 500 }));
   assert.equal(broken.ok, false);
-  assert.equal(broken.choice, null);
-});
-
-test('getLastChoice reports a failed read as ok:false without throwing', async () => {
-  const fetchImpl = async () => jsonResponse(403, { error: { message: 'no permission' } });
-  const result = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 'tok', fetchImpl });
-  assert.equal(result.ok, false);
-  assert.equal(result.choice, null);
-  assert.match(result.error, /403/);
+  assert.equal(broken.timestamp, null);
 });
 
 test('ensureHeader writes FULL_HEADER when row 1 is empty and leaves a matching header alone', async () => {
@@ -496,18 +460,18 @@ test('the direction column carries the trip the options measured (CMB-82)', () =
   assert.equal(col(home, 'direction'), 'outbound');
 });
 
-test('the push and the arrival join skip the trip home as they skip samples (CMB-82)', async () => {
-  const fetchImpl = byColumn({
-    A: { values: [['2026-09-22T08:28:15-04:00'], ['2026-09-22T17:30:02-04:00']] },
-    AC: { values: [['transit'], ['drive']] },
-    E: { values: [['inbound'], ['outbound']] },
-  });
-  const choice = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl });
-  assert.equal(choice.choice, 'transit');
+test('the arrival join skips the trip home as it skips samples (CMB-82)', async () => {
+  const fetchImpl = byColumn({ A: { values: [['2026-09-22T08:28:15-04:00'], ['2026-09-22T17:30:02-04:00']] }, E: { values: [['inbound'], ['outbound']] } });
   const at = await lastVerdictAt({ sheetId: 'S', tab: 'verdicts', token: 't', localDate: '2026-09-22', fetchImpl });
   assert.equal(at.timestamp, '2026-09-22T08:28:15-04:00');
 
-  const broken = await getLastChoice({ sheetId: 'S', tab: 'verdicts', token: 't', fetchImpl: byColumn({ AC: { values: [['drive']] }, E: 500 }) });
+  const broken = await lastVerdictAt({
+    sheetId: 'S',
+    tab: 'verdicts',
+    token: 't',
+    localDate: '2026-09-22',
+    fetchImpl: byColumn({ A: { values: [['2026-09-22T08:28:15-04:00']] }, E: 500 }),
+  });
   assert.equal(broken.ok, false);
 });
 

@@ -23,23 +23,14 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS, DIRECTIONS } from './routes.js';
 import { runVerdict } from './engine.js';
-import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
-import { pushIfChanged } from './notify.js';
+import { logArrival, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
+import { pushVerdict } from './notify.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
 export const SECRET_ENV = 'SWITCHTENDER_SHARED_SECRET';
 export const NTFY_TOPIC_ENV = 'NTFY_TOPIC';
 export const DEFAULT_PORT = 8080;
 export const REQUEST_TIMEOUT_MS = 20_000;
-
-/** The choice most recently logged (CMB-37). Never throws; missing credentials or a failed read just mean no prior choice to compare against. */
-async function defaultPreviousChoice(config, fetchImpl) {
-  const token = await tokenFromEnvOrMetadata({ fetchImpl });
-  if (!token) return { ok: false, choice: null, error: 'no credentials' };
-  const sheetId = config?.log?.sheet_id;
-  if (!sheetId) return { ok: false, choice: null, error: 'no sheet id configured' };
-  return getLastChoice({ sheetId, tab: config?.log?.sheet_tab ?? 'verdicts', token, fetchImpl });
-}
 
 /**
  * Constant-time comparison of a presented key against the secret.
@@ -91,8 +82,7 @@ export function createServer({
   timeoutMs = REQUEST_TIMEOUT_MS,
   logger = (line) => console.error(line),
   fetchImpl = fetch,
-  previousChoice = defaultPreviousChoice,
-  push = pushIfChanged,
+  push = pushVerdict,
   recordArrival = logArrival,
 }) {
   if (typeof secret !== 'string' || secret.length === 0) {
@@ -170,8 +160,7 @@ export function createServer({
       return pathname;
     }
 
-    // Cloud Scheduler's morning call only (CMB-37); read before `run`
-    // appends its own row, or the comparison would be against itself.
+    // Cloud Scheduler's 7:30 office-day call only (CMB-83).
     const notify = url.searchParams.get('notify') === '1';
 
     // The trip home (CMB-82) is logged for analysis and never spoken, so it
@@ -188,19 +177,15 @@ export function createServer({
 
     const computedAt = now();
     try {
-      const [{ verdict, spoken, logged = null }, prior] = await withTimeout(
-        Promise.all([run(config, { now: computedAt, from, trigger, direction }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
-        timeoutMs,
-      );
+      const { verdict, spoken, logged = null } = await withTimeout(run(config, { now: computedAt, from, trigger, direction }), timeoutMs);
       // A failed sheet write is the one failure nobody would otherwise see
       // from the phone: the verdict is fine, the tuning log just stops.
       if (logged && !logged.ok) logger(`log failed: ${logged.error}`);
 
       let notified = null;
       if (notify) {
-        if (prior && !prior.ok) logger(`notify: previous choice unavailable (${prior.error})`);
         const topic = (process.env[NTFY_TOPIC_ENV] ?? '').trim();
-        notified = await push({ choice: verdict.choice, previousChoice: prior?.choice ?? null, spoken, topic, fetchImpl });
+        notified = await push({ choice: verdict.choice, spoken, topic, fetchImpl });
         if (!notified.ok) logger(`notify failed: ${notified.error}`);
       }
 
