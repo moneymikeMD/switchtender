@@ -55,6 +55,7 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  * @param options.log        false skips the sheet write even if config enables it
  * @param options.from       'fork' (default) for the verdict at the fork, 'origin'
  *                           for a whole-trip estimate from home (CMB-30)
+ * @param options.trigger    who asked, one of log.TRIGGERS, or null when unknown (CMB-81)
  * @param options.signalTimeoutMs  deadline per optional feed
  * @param options.logTimeoutMs     deadline for the sheet write
  * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
@@ -64,7 +65,7 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  */
 export async function runVerdict(
   config,
-  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork', signalTimeoutMs = SIGNAL_TIMEOUT_MS, logTimeoutMs = LOG_TIMEOUT_MS } = {},
+  { fetchImpl = fetch, now = new Date(), log = true, from = 'fork', trigger = null, signalTimeoutMs = SIGNAL_TIMEOUT_MS, logTimeoutMs = LOG_TIMEOUT_MS } = {},
 ) {
   const { decision, secrets } = config;
   const nowMs = now.getTime();
@@ -148,6 +149,7 @@ export async function runVerdict(
       wmata_lines: wmata && !wmata.unknown ? (wmata.lines ?? []).join(' | ') : null,
       wmata_categories: wmata && !wmata.unknown ? (wmata.categories ?? []).join(' | ') : null,
       wmata_reasons: wmata && !wmata.unknown ? (wmata.reasons ?? []).join(' | ') : null,
+      trigger,
     };
     logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
   }

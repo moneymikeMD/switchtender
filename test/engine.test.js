@@ -135,6 +135,24 @@ test('every extra the engine logs has a column, in EXTRA_COLUMNS order, and the 
   assert.equal(col('measured_from'), 'fork');
   assert.equal(col('incidents_route_matched'), '', 'unknown incidents leave the cell empty');
   assert.equal(col('incidents_unstable'), '');
+  assert.equal(col('trigger'), '', 'no trigger given is unknown, never a guess');
+});
+
+test('the trigger a caller names lands in the trigger column (CMB-81)', async () => {
+  const rows = [];
+  const inner = stubFetch();
+  const fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('metadata.google.internal')) return { ok: true, json: async () => ({ access_token: 'tok' }) };
+    if (u.includes('sheets.googleapis.com')) {
+      if (init.method === 'GET') return { ok: true, status: 200, json: async () => ({ values: [Array.from(FULL_HEADER)] }) };
+      rows.push(JSON.parse(init.body).values[0]);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    return inner(url, init);
+  };
+  await runVerdict(baseConfig({ log: true }), { fetchImpl, now: new Date('2026-09-17T12:00:00Z'), trigger: 'poll' });
+  assert.equal(rows[0][FULL_HEADER.indexOf('trigger')], 'poll');
 });
 
 test('a stalled optional feed costs its signal, not the verdict; the deadlines are wired through', async () => {

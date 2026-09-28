@@ -60,6 +60,7 @@ Sources:
 | Scenario | Enterprise calls | Essentials calls | Enterprise billable (after 1,000 free) | Cost |
 | --- | --- | --- | --- | --- |
 | Normal: 2 verdicts per weekday, ~44 verdicts, 132 calls | 88 | 44 | 0 | **$0.00** |
+| With hourly samples (CMB-81): ~8 verdicts per weekday, ~176 verdicts, 528 calls | 352 | 176 | 0 | **$0.00** |
 | Runaway: 1 verdict per minute for a day, 1,440 verdicts, 4,320 calls | 2,880 | 1,440 | 1,880 | **$28.20** |
 | Runaway day on top of a normal month | 2,968 | 1,484 | 1,968 | $29.52 |
 

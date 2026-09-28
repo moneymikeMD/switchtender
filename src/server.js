@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS } from './routes.js';
 import { runVerdict } from './engine.js';
-import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES } from './log.js';
+import { getLastChoice, logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
 import { pushIfChanged } from './notify.js';
 
 export const KEY_HEADER = 'x-switchtender-key';
@@ -162,6 +162,14 @@ export function createServer({
       return pathname;
     }
 
+    // Who asked (CMB-81): the hourly sampler sends poll, so its rows never
+    // pass for a drive. Absent is unknown, logged as an empty cell.
+    const trigger = url.searchParams.get('trigger');
+    if (trigger !== null && !TRIGGERS.includes(trigger)) {
+      send(res, 400, { error: `trigger must be one of ${TRIGGERS.join(', ')}` });
+      return pathname;
+    }
+
     // Cloud Scheduler's morning call only (CMB-37); read before `run`
     // appends its own row, or the comparison would be against itself.
     const notify = url.searchParams.get('notify') === '1';
@@ -169,7 +177,7 @@ export function createServer({
     const computedAt = now();
     try {
       const [{ verdict, spoken, logged = null }, prior] = await withTimeout(
-        Promise.all([run(config, { now: computedAt, from }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
+        Promise.all([run(config, { now: computedAt, from, trigger }), notify ? previousChoice(config, fetchImpl) : Promise.resolve(null)]),
         timeoutMs,
       );
       // A failed sheet write is the one failure nobody would otherwise see

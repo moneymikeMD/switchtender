@@ -3,8 +3,8 @@
 // The log exists so the rule's starting guesses (the margin scale, the
 // confidence penalties) can be tuned against what the engine actually saw.
 // So every row carries the inputs needed to reconstruct the call, not just
-// the call itself. About 500 rows a year: a Sheet, queried through a BigQuery
-// external table, is plenty. A warehouse is not.
+// the call itself. About 2,000 rows a year with the hourly samples (CMB-81): a
+// Sheet, queried through a BigQuery external table, is plenty. A warehouse is not.
 //
 // Two invariants:
 //   - Logging never blocks the verdict. Every exported entry point that talks
@@ -117,11 +117,17 @@ export const EXTRA_COLUMNS = Object.freeze([
   'wmata_lines',
   'wmata_categories',
   'wmata_reasons',
+  // Added 2026-09-28 (CMB-81): who asked for the verdict. Empty is unknown.
+  'trigger',
 ]);
 
 export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);
 
 export const ENGINE_VERSION = 'switchtender/1.0.0';
+
+// What a `trigger` cell may hold. `poll` rows are hourly samples nobody acted
+// on, so the readers that look for the last real call skip them.
+export const TRIGGERS = Object.freeze(['phone', 'schedule', 'poll']);
 
 // Meteorological seasons, northern hemisphere. The log is for a commute in
 // one place; a hemisphere flag can come with the first southern user.
@@ -199,8 +205,8 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
     local_date: t.localDate,
     weekday: t.weekday,
     season: t.season,
-    // Every verdict so far is given on the way in. The evening leg is a
-    // separate ticket; until then the value is constant so the column exists.
+    // Every verdict so far is given on the way in. The evening leg is CMB-82;
+    // until then the value is constant so the column exists.
     direction: 'inbound',
 
     drive_minutes: drive.totalSeconds == null ? null : Math.round(drive.totalSeconds / 60),
@@ -307,14 +313,31 @@ function columnLetter(index) {
 }
 
 const CHOICE_COLUMN = columnLetter(HEADER.indexOf('choice'));
+const TRIGGER_COLUMN = columnLetter(FULL_HEADER.indexOf('trigger'));
 
-/** The most recent logged `choice` (CMB-37). Null means never logged or the read failed, not "clear". */
+// Indexes (from row 2) of the rows logged by an hourly sample. Sheets answers
+// 400 for a range past the grid, which a tab narrower than the trigger column
+// is, and such a tab cannot hold a poll row yet.
+async function pollRows({ sheetId, tab, token, fetchImpl, signal }) {
+  const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${TRIGGER_COLUMN}2:${TRIGGER_COLUMN}`)}`;
+  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  if (!result.ok) return result.status === 400 ? { ok: true, rows: new Set() } : { ok: false, error: result.error };
+  const values = result.body?.values ?? [];
+  return { ok: true, rows: new Set(values.flatMap((row, i) => (row?.[0] === 'poll' ? [i] : []))) };
+}
+
+/** The most recent logged `choice` (CMB-37), ignoring hourly samples. Null means never logged or the read failed, not "clear". */
 export async function getLastChoice({ sheetId, tab, token, fetchImpl = fetch, signal }) {
   const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${CHOICE_COLUMN}2:${CHOICE_COLUMN}`)}`;
-  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  const [result, polls] = await Promise.all([
+    sheetsCall(fetchImpl, token, 'GET', url, undefined, signal),
+    pollRows({ sheetId, tab, token, fetchImpl, signal }),
+  ]);
   if (!result.ok) return { ok: false, choice: null, error: result.error };
+  if (!polls.ok) return { ok: false, choice: null, error: polls.error };
   const values = result.body?.values ?? [];
   for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (polls.rows.has(i)) continue;
     const value = values[i]?.[0];
     if (typeof value === 'string' && value) return { ok: true, choice: value, error: null };
   }
@@ -468,16 +491,22 @@ export const ARRIVALS_HEADER = Object.freeze(['timestamp', 'local_date', 'weekda
 const TIMESTAMP_COLUMN = columnLetter(HEADER.indexOf('timestamp'));
 
 /**
- * The timestamp of the last verdict logged on `localDate`, or null. Null is
- * "no verdict to attach this arrival to", never an error the caller should
- * treat as one: an arrival worth recording is worth recording alone.
+ * The timestamp of the last verdict logged on `localDate`, hourly samples
+ * aside, or null. Null is "no verdict to attach this arrival to", never an
+ * error the caller should treat as one: an arrival worth recording is worth
+ * recording alone.
  */
 export async function lastVerdictAt({ sheetId, tab, token, localDate, fetchImpl = fetch, signal }) {
   const url = `${SHEETS}/${sheetId}/values/${rangeOf(tab, `${TIMESTAMP_COLUMN}2:${TIMESTAMP_COLUMN}`)}`;
-  const result = await sheetsCall(fetchImpl, token, 'GET', url, undefined, signal);
+  const [result, polls] = await Promise.all([
+    sheetsCall(fetchImpl, token, 'GET', url, undefined, signal),
+    pollRows({ sheetId, tab, token, fetchImpl, signal }),
+  ]);
   if (!result.ok) return { ok: false, timestamp: null, error: result.error };
+  if (!polls.ok) return { ok: false, timestamp: null, error: polls.error };
   const values = result.body?.values ?? [];
   for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (polls.rows.has(i)) continue;
     const value = values[i]?.[0];
     if (typeof value === 'string' && value.startsWith(localDate)) return { ok: true, timestamp: value, error: null };
   }

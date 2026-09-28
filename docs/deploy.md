@@ -2,7 +2,8 @@
 
 `src/server.js` serves `GET /verdict` on Cloud Run in project
 `commuter-bot-501717`, region `us-east4`, service `switchtender`. It scales to
-zero and is called twice a weekday. Cloud Run's own IAM gate is off
+zero and is called about eight times a weekday: the phone at the fork, the
+7:00 push check, and six hourly samples. Cloud Run's own IAM gate is off
 (`--allow-unauthenticated`) because a phone shortcut cannot mint a Google
 identity token; the `X-Switchtender-Key` header, compared in constant time, is
 the authentication. `/health` is the only route served without it.
@@ -106,7 +107,7 @@ none of which `drive_minutes` models.
 ## Weekday morning push (CMB-36, CMB-37)
 
 A Cloud Scheduler job `switchtender-verdict-check`, weekdays 7:00 AM
-`America/New_York`, calls `/verdict?notify=1`. That query flag is the only
+`America/New_York`, calls `/verdict?notify=1&trigger=schedule`. The notify flag is the only
 thing that turns on the push check — the phone's geofence-triggered call and
 `make poll`/`make poll-local` never set it, so a push notification fires at
 most once a day, only from this scheduled call, whether or not the commute
@@ -137,6 +138,32 @@ readable by anyone with Cloud Scheduler access on this project — the owner
 alone, same trust boundary as everything else here. Re-running
 `scripts/deploy-cloud-run.sh` updates the job in place if the service URL or
 secret ever changes.
+
+## Hourly samples (CMB-81)
+
+The phone logs a verdict only on days the owner drives in, three or four
+rows a week. A second Cloud Scheduler job, `switchtender-verdict-sample`,
+calls `/verdict?trigger=poll` at half past each hour from 5:30 to 10:30 AM
+on weekdays (`30 5-10 * * 1-5`, `America/New_York`), so the log also grows on
+days nobody drives. `scripts/deploy-cloud-run.sh` creates or updates it next
+to the push job, with the same header.
+
+Every row says who asked for it in the `trigger` column: `poll` for a
+sample, `schedule` for the 7:00 push check, `phone` when a caller sends it,
+and empty when nobody said (the fork macro today, and every row logged
+before 2026-09-28). Any other value is a 400. Samples never set `notify`.
+
+Samples are for analysis, not decisions. The two readers that look for the
+last real call skip `poll` rows: the push check's previous choice, and the
+verdict an arrival is attached to. Filter them the same way when scoring a
+drive, and keep them when studying how the road behaves across the morning.
+
+Cost: about 30 extra verdicts a week, which keeps Routes inside its free
+calls (`docs/cost-routes.md`). An evening window waits for the outbound
+trip, CMB-82: today the service only computes the way in.
+
+Run one by hand with
+`gcloud scheduler jobs run switchtender-verdict-sample --location us-east4`.
 
 ## Logs
 
