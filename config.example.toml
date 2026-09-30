@@ -72,7 +72,7 @@ addl_walk_mins = 0
 # How far ahead of the decision point to deliver the verdict. Far enough to
 # act on, close enough that conditions have not changed. Verify this in the
 # car at real speed before trusting it.
-lead_miles = 4.0
+lead_miles = 1.5
 
 [decision]
 # Transit wins ties. A tie means the model cannot tell them apart, and the

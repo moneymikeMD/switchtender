@@ -1,6 +1,6 @@
 # Phone automation (CMB-17)
 
-The phone fires on a geofence four miles before the fork, calls the verdict
+The phone fires on a geofence 1.5 miles before the fork, calls the verdict
 service, and speaks the answer over the car audio. Weekday mornings only.
 
 ## Recommendation: MacroDroid
@@ -20,9 +20,9 @@ Neither is a subscription.
 ## Where the trigger point is
 
 The fork is `[route.decision_point]` in your `config.toml` (gitignored, never
-in this repo). The trigger point is `[trigger] lead_miles` (4.0) before it
+in this repo). The trigger point is `[trigger] lead_miles` (1.5) before it
 along the inbound road. Open the decision point in a map, follow your route
-back four miles, and drop the geofence pin on the roadway itself. Read both
+back 1.5 miles, and drop the geofence pin on the roadway itself. Read both
 values from the file; nothing in this document or the repo carries them.
 
 ## Before building: permissions that make geofences fire
@@ -63,7 +63,7 @@ body itself carries nothing private:
   text, so mark the variable secure if the app offers it.
 
 Then tap the Geofence trigger, create a zone, drop the pin on the inbound
-road four miles before the fork, radius 400 m. The export deliberately
+road 1.5 miles before the fork, radius 400 m. The export deliberately
 carries no zone: a geofence describes the commute. Enable the macro and Run
 it once at your desk on Bluetooth. Everything else (weekday and time
 constraints, HTTP request, JSON parse, speech on the Music stream, failure
@@ -180,7 +180,8 @@ inside the fence, enough for a fix. Under 150 m is unreliable in this API. If
 the announcement lands too close to the fork, move the pin out rather than
 raising `lead_miles`: the service only uses `lead_miles` as a description.
 
-400 m at `lead_miles = 4.0` is confirmed in practice (2026-09-21 drive).
+The phone's fence sits 1.5 miles before the fork and has fired on real drives
+since 2026-09-21.
 
 ## Car audio and Android Auto
 
