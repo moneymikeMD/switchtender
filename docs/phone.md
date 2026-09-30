@@ -63,7 +63,7 @@ body itself carries nothing private:
   text, so mark the variable secure if the app offers it.
 
 Then tap the Geofence trigger, create a zone, drop the pin on the inbound
-road 1.5 miles before the fork, radius 400 m. The export deliberately
+road 1.5 miles before the fork, radius 500 m. The export deliberately
 carries no zone: a geofence describes the commute. Enable the macro and Run
 it once at your desk on Bluetooth. Everything else (weekday and time
 constraints, HTTP request, JSON parse, speech on the Music stream, failure
@@ -74,7 +74,7 @@ step by step, for reference or for Tasker.
 
 1. Add Macro. Name it `Switchtender`.
 2. **Trigger** > Location > **Geofence Trigger**. Add a geofence: drag the
-   pin to the trigger point, radius **400 m** (see below), name it
+   pin to the trigger point, radius **500 m** (see below), name it
    `Switchtender trigger`. Event: **Area Entered**. Loitering delay: 0.
 3. **Action** > Connectivity > **HTTP Request**.
    - Method: `GET`
@@ -134,10 +134,11 @@ Build one macro per place. Both are the same three blocks:
    office fence changes nothing, and a fence that fires twice on one approach
    records once.
 
-Radius is not the fork's 400 m. That number exists because a car at 60 mph
+Radius is not the fork's 500 m. That number exists because a car at 60 mph
 needs a wide fence to catch a background location fix; arriving at a lot or a
-door happens at walking pace and the fix has time. Start at **150 m**, the
-smallest this API is reliable at, and widen only if an arrival goes missing.
+door happens at walking pace and the fix has time. Use **40 m**: both arrival
+fences run at 40 m and fired unattended on 2026-09-30. Widen only if an
+arrival goes missing.
 A tight fence matters here: the arrival time is the measurement, and a fence
 that fires a quarter mile out records a time that was never true.
 
@@ -173,15 +174,16 @@ modelling in the macro.
 
 ## Geofence radius
 
-Start at **400 m**. Play services geofences fire on the next location fix
+Start at **500 m**. Play services geofences fire on the next location fix
 after the boundary, which in the background can be tens of seconds behind; at
-60 mph that is up to a half mile. 400 m at that speed is about fifteen seconds
-inside the fence, enough for a fix. Under 150 m is unreliable in this API. If
+60 mph that is up to a half mile. 500 m at that speed is about twenty seconds
+inside the fence, enough for a fix. If
 the announcement lands too close to the fork, move the pin out rather than
 raising `lead_miles`: the service only uses `lead_miles` as a description.
 
-The phone's fence sits 1.5 miles before the fork and has fired on real drives
-since 2026-09-21.
+The phone's fence is 500 m, centered on the inbound road 1.52 miles before
+the fork by road, so the route enters it 1.82 miles out (measured 2026-09-30
+along the Routes API polyline). It has fired on real drives since 2026-09-21.
 
 ## Car audio and Android Auto
 
@@ -218,7 +220,7 @@ the 1Password item. Until you do, the call returns 401 and the phone says
 ## Alternative: Tasker
 
 Same shape, different names. Profile: **Location** (Tasker's own monitor;
-set radius about 400 m) or the AutoLocation plugin's Geofence, plus a
+set radius about 500 m) or the AutoLocation plugin's Geofence, plus a
 **Time** context 05:30 to 10:00 and **Day** context Mon to Fri. Task: **HTTP
 Request** (Method GET, URL as above, Headers `X-Switchtender-Key:<secret>`,
 Timeout 25, Structured Output on) then **If** `%http_response_code eq 200`
