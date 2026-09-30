@@ -35,7 +35,7 @@ crash on Memorial Drive, a Bruins game letting out early, or single-tracking on
 the Red Line, the answer flips, and you cannot tell which morning it is from
 the driver's seat.
 
-switchtender makes the call four miles before the fork, from a phone in the
+switchtender makes the call 1.5 miles before the fork, from a phone in the
 cupholder, without you touching it.
 
 ## How it decides
@@ -105,7 +105,7 @@ npm start -- --from origin
   Manager, config mounted as a file. One script.
 - **Fire it from the phone.** [docs/phone.md](docs/phone.md) and
   [docs/switchtender.category](docs/switchtender.category) give you the
-  MacroDroid macros for Android: a geofence four miles before the fork triggers
+  MacroDroid macros for Android: a geofence 1.5 miles before the fork triggers
   an HTTP call and speaks the answer over the car audio, weekday mornings only,
   and two more record when you actually arrived.
 - **Know what it costs.** [docs/cost-routes.md](docs/cost-routes.md) works

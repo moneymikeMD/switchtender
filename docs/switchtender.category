@@ -395,7 +395,7 @@
           "m_isOrCondition": false
         }
       ],
-      "m_description": "Four miles before the fork on weekday mornings, asks the switchtender service whether to keep driving or park and ride, and speaks the verdict over the car audio.",
+      "m_description": "1.5 miles before the fork on weekday mornings, asks the switchtender service whether to keep driving or park and ride, and speaks the verdict over the car audio.",
       "m_descriptionOpen": false,
       "m_enabled": true,
       "m_excludeLog": false,
@@ -412,7 +412,7 @@
           "disableLogging": false,
           "m_SIGUID": -8793508780182542029,
           "m_classType": "GeofenceTrigger",
-          "m_comment": "Pick the geofence: drop the pin on the inbound road four miles before the fork ([route.decision_point] minus [trigger] lead_miles in config.toml). Radius 400 m.",
+          "m_comment": "Pick the geofence: drop the pin on the inbound road 1.5 miles before the fork ([route.decision_point] minus [trigger] lead_miles in config.toml). Radius 400 m.",
           "m_constraintList": [],
           "m_isDisabled": false,
           "m_isOrCondition": false
