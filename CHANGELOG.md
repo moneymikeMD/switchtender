@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/moneymikeMD/switchtender/compare/v1.4.0...v1.5.0) (2026-10-01)
+
+
+### Features
+
+* measure the trip home and sample it hourly on weekday evenings (CMB-82) ([2714c5f](https://github.com/moneymikeMD/switchtender/commit/2714c5f8b464ec4d8829edf25c85fdd9f3a99944))
+* measure the trip home and sample it hourly on weekday evenings (CMB-82) ([f51046c](https://github.com/moneymikeMD/switchtender/commit/f51046c918db72b67a39dd87e28cf59f2b68f048))
+* push the verdict at 7:30 on office days, every time, from home (CMB-83) ([fd2f92b](https://github.com/moneymikeMD/switchtender/commit/fd2f92bfca407c6f0c0e747cf0279f16f2d050de))
+* push the verdict at 7:30 on office days, every time, from home (CMB-83) ([4f9e913](https://github.com/moneymikeMD/switchtender/commit/4f9e91310cd045792a4927c0f0d562c1fd70969c))
+* sample the verdict hourly on weekday mornings, tagged as poll (CMB-81) ([0582f80](https://github.com/moneymikeMD/switchtender/commit/0582f80812cb423a28d71706bc5fe1aa0971b173))
+* sample the verdict hourly on weekday mornings, tagged as poll (CMB-81) ([3fcec09](https://github.com/moneymikeMD/switchtender/commit/3fcec0977837ca58389237bdcff9701ccde4db07))
+
 ## [1.4.0](https://github.com/moneymikeMD/switchtender/compare/v1.3.1...v1.4.0) (2026-09-26)
 
 
