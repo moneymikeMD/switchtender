@@ -90,8 +90,8 @@ RELEASE_PLEASE_TOKEN --repo moneymikeMD/switchtender`, then `gh pr close <n>
 && gh pr reopen <n>` once to kick the stuck PR.
 
 Generated PRs are exempt from `pr-body-length.yml`: Dependabot's, and
-release-please's, matched by its `release-please--` head branch in this
-repo rather than by author, since the PAT makes the owner its author.
+every release-please PR, matched by its `release-please--` head branch
+rather than by author, since the PAT makes the owner its author.
 Their bodies are changelogs, never meant to satisfy a 1000-char rule.
 
 ## Rules
