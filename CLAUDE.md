@@ -49,9 +49,9 @@ file ownership, reviews the diff, runs `npm test` and a live `npm start`.
 ruleset — no direct push. For the owner (repo admin, bypass always) this
 is for change visibility and a second, GitHub-native record of what
 shipped, not a review gate: open the PR, merge it immediately once CI is
-green. An outside contributor's PR is different — the repo is public, so
-`required_approving_review_count: 1` applies to them: the owner reviews
-and approves before anything from someone else merges. **PR bodies are capped at 1000
+green. No approving review is required (owner decision 2026-10-01); only
+accounts with write access can merge, so an outside contributor's PR still
+waits for the owner to merge it. **PR bodies are capped at 1000
 characters** (owner's rule; `.github/workflows/pr-body-length.yml` fails
 the PR if it isn't). CI (`.github/workflows/ci.yml`) runs `npm test` on
 every push and PR and is a required check. Close the Jira ticket with a
