@@ -19,7 +19,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "smol-toml": "^1.8.0"
+    "smol-toml": "^1.9.0"
   },
   "devDependencies": {
     "prettier": "^3.9.8"
