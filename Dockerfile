@@ -5,7 +5,7 @@
 # runtime as a Secret Manager volume (see docs/deploy.md). Every key comes
 # from the environment. Nothing in this image is secret.
 
-FROM node:24-slim
+FROM public.ecr.aws/docker/library/node:24-slim
 
 ENV NODE_ENV=production
 WORKDIR /app
