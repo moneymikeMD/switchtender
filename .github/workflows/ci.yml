@@ -22,3 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: moneymikeMD/ai-toolkit/actions/no-personal-paths@v1
+
+  decisions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint decision records
+        run: |
+          git clone --depth 1 https://github.com/moneymikeMD/ai-toolkit "$RUNNER_TEMP/ai-toolkit"
+          "$RUNNER_TEMP/ai-toolkit/scripts/decisions.sh" lint --root "$PWD"
