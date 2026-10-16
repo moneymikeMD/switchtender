@@ -1,19 +1,17 @@
-# Decisions
+---
+date: 2026-09-18
+slug: cmb-36-push-channel-is-ntfy-sh
+title: "CMB-36: push channel is ntfy.sh (public), not lab-ntfy or FCM"
+migrated: true
+---
 
-Dated log of decisions that need a durable home. Newest first.
+# CMB-36: push channel is ntfy.sh (public), not lab-ntfy or FCM
 
-## 2026-09-28 — CMB-83: the push is a 7:30 look at the trip, every office day
+## Decision
 
-**Decision:** the ntfy push fires at 7:30 AM Monday to Wednesday, the owner's permanent office days, and sends every time. It no longer compares against the last choice. It measures from home.
+verdict-change alerts push via the public `ntfy.sh` instance, to a fresh topic used for nothing else. Not the homelab's self-hosted `lab-ntfy` instance, and not Firebase Cloud Messaging.
 
-**Why:** the owner uses it to see conditions on sitting down in the car. A push that stays silent when nothing flipped cannot answer "what is it like right now", and a push on a home-working day is
-noise. Measuring from the fork would leave out the leg the owner is about to drive, and would put the arrival clock early by that leg.
-
-**Superseded:** the CMB-37 rule below, "differs from the last send", and the 7:00 every-weekday schedule.
-
-## 2026-09-18 — CMB-36: push channel is ntfy.sh (public), not lab-ntfy or FCM
-
-**Decision:** verdict-change alerts push via the public `ntfy.sh` instance, to a fresh topic used for nothing else. Not the homelab's self-hosted `lab-ntfy` instance, and not Firebase Cloud Messaging.
+## Why
 
 **Why ntfy over FCM:** the owner's installed ntfy app is the Google Play build (FCM-backed under the hood), so delivery is reliable even with the app closed. There is no existing switchtender Android
 app to hold an FCM device token, so FCM directly would mean building one first — much bigger than sending a push. ntfy needs only a topic name and a `curl -d`.
@@ -24,6 +22,12 @@ scale-to-zero public service. ntfy.sh has no such requirement.
 **Why a fresh topic, not the existing Grafana `lab-ntfy` contact point:** least privilege — switchtender's credential and the homelab's infrastructure alert channel should not share blast radius if
 either leaks. ntfy.sh's free tier has no per-topic auth, so the topic name itself is the secret: a long, random, unguessable slug (not `switchtender` or anything guessable), generated fresh and stored
 as a normal 1Password item / Secret Manager secret, the same pattern as the project's other keys (CLAUDE.md rule 7).
+
+## Cost
+
+unrecorded
+
+## Not yet decided
 
 **Not yet decided (CMB-37, the build ticket):** the exact topic-name generation and storage steps, and how "verdict differs from the last send" is computed given Cloud Run holds no state between calls
 (scales to zero) — the plan is to read the previous verdict back from the already-logged sheet row.
