@@ -102,6 +102,34 @@ The phone can know this without being asked. Park-and-ride always passes through
 
 A morning that broke the pattern — parked and then gave up and drove, a lift from someone else — is worth correcting by hand in the sheet rather than modelling in the macro.
 
+## Ride alerts (CMB-148)
+
+The morning Metro ride is tracked by the server (docs/configuration.md "Rides"); the phone only starts it, sends GPS fixes until the train is locked, and buzzes on the pushes. Three macros in
+`docs/switchtender.category` do that, with the host as `<service>`:
+
+- **Switchtender ride am** (empty trigger). POSTs `/ride/start?leg=am`; on `started: true` it waits until `gps_from_epoch`, then forces a location update about every 20-30 s and POSTs
+  `/ride/fix?leg=am&lat=&lon=&acc=&kmh=` until the answer carries `done: true` or `gps_until_epoch` passes. Set `st_url` to the service's base URL and `st_key` to the shared secret, as for the
+  other macros. Run it from **Switchtender arrived park** by adding a Macro Run action at the end, so the lot fence that records the arrival also starts the ride.
+- **Switchtender ride alert**. Notification Received from the ntfy app, title matching `Ride alert` exactly. Splits the body on `|`, drops the push when the send epoch after it is more than 60 s old,
+  otherwise vibrates `700,150,700,150,700,1200` until the notification is gone (3 min cap). The "I'm off" and "Not riding" buttons clear the notification, which ends the loop.
+- **Switchtender ride buzz**. The same on title `Ride` exactly, one buzz. `Ride status` pushes rely on the ntfy app's own priority handling and trigger nothing here.
+
+Subscribe to the ride topic (`RIDE_NTFY_TOPIC`, docs/deploy.md) in the ntfy app. Title matching is exact on purpose: "Contains" on `Ride` would also fire on `Ride alert` and `Ride status`.
+
+What the owner's phone was measured to do (CMB-149, 2026-10-21):
+
+| Building block | Result |
+| --- | --- |
+| Notification Received on an ntfy push | fires within 1-2 s |
+| Vibrate loop until the notification is dismissed | works; tapping an ntfy action button re-fires the trigger once, harmless because the loop checks the notification is still there |
+| Split on `\|` and compute the lag from `{system_time}` | works |
+| A priority 5 push during Do Not Disturb | gets through |
+| Server push to a moving underground train | 10 of 10 arrived, 1-2 s late |
+| Force Location Update in a pocket | a fix every 17-25 s |
+| GPS speed, `{last_loc_speed_kmh}` | 0 on every fix, above ground and moving; the server ignores it and derives movement from distance between fixes |
+| GPS accuracy above ground on the train | 17-900 m, about half under 50 m |
+| GPS underground | reports success with 13-600 m accuracy and speed 0; nothing in a fix says "underground", which is why the evening leg is not built |
+
 ## Geofence radius
 
 Start at **500 m**. Play services geofences fire on the next location fix after the boundary, which in the background can be tens of seconds behind; at 60 mph that is up to a half mile. 500 m at that
