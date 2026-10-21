@@ -1,0 +1,486 @@
+{
+ "recordedAt": "2026-10-21T13:29:00Z",
+ "source": "https://api.wmata.com/Rail.svc/json/jStations",
+ "Stations": [
+  {
+   "Code": "A01",
+   "Name": "Metro Center",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.898303,
+   "Lon": -77.028099
+  },
+  {
+   "Code": "A02",
+   "Name": "Farragut North",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.903192,
+   "Lon": -77.039766
+  },
+  {
+   "Code": "A03",
+   "Name": "Dupont Circle",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.909499,
+   "Lon": -77.04362
+  },
+  {
+   "Code": "A04",
+   "Name": "Woodley Park-Zoo/Adams Morgan",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.924999,
+   "Lon": -77.052648
+  },
+  {
+   "Code": "A05",
+   "Name": "Cleveland Park",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.934703,
+   "Lon": -77.058226
+  },
+  {
+   "Code": "A06",
+   "Name": "Van Ness-UDC",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.94362,
+   "Lon": -77.063511
+  },
+  {
+   "Code": "A07",
+   "Name": "Tenleytown-AU",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.947808,
+   "Lon": -77.079615
+  },
+  {
+   "Code": "A08",
+   "Name": "Friendship Heights",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.960744,
+   "Lon": -77.085969
+  },
+  {
+   "Code": "A09",
+   "Name": "Bethesda",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.984282,
+   "Lon": -77.094431
+  },
+  {
+   "Code": "A10",
+   "Name": "Medical Center",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.999947,
+   "Lon": -77.097253
+  },
+  {
+   "Code": "A11",
+   "Name": "Grosvenor-Strathmore",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.029158,
+   "Lon": -77.10415
+  },
+  {
+   "Code": "A12",
+   "Name": "North Bethesda",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.048043,
+   "Lon": -77.113131
+  },
+  {
+   "Code": "A13",
+   "Name": "Twinbrook",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.062359,
+   "Lon": -77.121113
+  },
+  {
+   "Code": "A14",
+   "Name": "Rockville",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.084215,
+   "Lon": -77.146424
+  },
+  {
+   "Code": "A15",
+   "Name": "Shady Grove",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.119819,
+   "Lon": -77.164921
+  },
+  {
+   "Code": "B01",
+   "Name": "Gallery Pl-Chinatown",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.89834,
+   "Lon": -77.021851
+  },
+  {
+   "Code": "B02",
+   "Name": "Judiciary Square",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.896084,
+   "Lon": -77.016643
+  },
+  {
+   "Code": "B03",
+   "Name": "Union Station",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.897723,
+   "Lon": -77.006745
+  },
+  {
+   "Code": "B04",
+   "Name": "Rhode Island Ave-Brentwood",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.920741,
+   "Lon": -76.995984
+  },
+  {
+   "Code": "B05",
+   "Name": "Brookland-CUA",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.933234,
+   "Lon": -76.994544
+  },
+  {
+   "Code": "B06",
+   "Name": "Fort Totten",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.951777,
+   "Lon": -77.002174
+  },
+  {
+   "Code": "B07",
+   "Name": "Takoma",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.975532,
+   "Lon": -77.017834
+  },
+  {
+   "Code": "B08",
+   "Name": "Silver Spring",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.993841,
+   "Lon": -77.031321
+  },
+  {
+   "Code": "B09",
+   "Name": "Forest Glen",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.015413,
+   "Lon": -77.042953
+  },
+  {
+   "Code": "B10",
+   "Name": "Wheaton",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.038558,
+   "Lon": -77.051098
+  },
+  {
+   "Code": "B11",
+   "Name": "Glenmont",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.061713,
+   "Lon": -77.05341
+  },
+  {
+   "Code": "B35",
+   "Name": "NoMa-Gallaudet U",
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.907407,
+   "Lon": -77.002961
+  },
+  {
+   "Code": "E01",
+   "Name": "Mt Vernon Sq 7th St-Convention Center",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.905604,
+   "Lon": -77.022256
+  },
+  {
+   "Code": "E02",
+   "Name": "Shaw-Howard U",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.912919,
+   "Lon": -77.022194
+  },
+  {
+   "Code": "E03",
+   "Name": "U Street/African-Amer Civil War Memorial/Cardozo",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.916489,
+   "Lon": -77.028938
+  },
+  {
+   "Code": "E04",
+   "Name": "Columbia Heights",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.928672,
+   "Lon": -77.032775
+  },
+  {
+   "Code": "E05",
+   "Name": "Georgia Ave-Petworth",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.936077,
+   "Lon": -77.024728
+  },
+  {
+   "Code": "E06",
+   "Name": "Fort Totten",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.951777,
+   "Lon": -77.002174
+  },
+  {
+   "Code": "E07",
+   "Name": "West Hyattsville",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.954931,
+   "Lon": -76.969881
+  },
+  {
+   "Code": "E08",
+   "Name": "Hyattsville Crossing",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.965276,
+   "Lon": -76.956182
+  },
+  {
+   "Code": "E09",
+   "Name": "College Park-U of Md",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.978523,
+   "Lon": -76.928432
+  },
+  {
+   "Code": "E10",
+   "Name": "Greenbelt",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 39.011036,
+   "Lon": -76.911362
+  },
+  {
+   "Code": "F01",
+   "Name": "Gallery Pl-Chinatown",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.89834,
+   "Lon": -77.021851
+  },
+  {
+   "Code": "F02",
+   "Name": "Archives-Navy Memorial-Penn Quarter",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.893893,
+   "Lon": -77.021902
+  },
+  {
+   "Code": "F03",
+   "Name": "L'Enfant Plaza",
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.884775,
+   "Lon": -77.021964
+  },
+  {
+   "Code": "F04",
+   "Name": "Waterfront",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.876221,
+   "Lon": -77.017491
+  },
+  {
+   "Code": "F05",
+   "Name": "Navy Yard-Ballpark",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.876588,
+   "Lon": -77.005086
+  },
+  {
+   "Code": "F06",
+   "Name": "Anacostia",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.862072,
+   "Lon": -76.995648
+  },
+  {
+   "Code": "F07",
+   "Name": "Congress Heights",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.845334,
+   "Lon": -76.98817
+  },
+  {
+   "Code": "F08",
+   "Name": "Southern Avenue",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.840974,
+   "Lon": -76.97536
+  },
+  {
+   "Code": "F09",
+   "Name": "Naylor Road",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.851187,
+   "Lon": -76.956565
+  },
+  {
+   "Code": "F10",
+   "Name": "Suitland",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.843891,
+   "Lon": -76.932022
+  },
+  {
+   "Code": "F11",
+   "Name": "Branch Ave",
+   "LineCode1": "GR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lat": 38.826995,
+   "Lon": -76.912134
+  }
+ ]
+}
