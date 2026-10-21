@@ -13,7 +13,7 @@ import {
   emptyState,
   observe,
   candidates,
-  usableFix,
+  usableFixes,
   lockFromFixes,
   seqToPosition,
   distanceM,
@@ -213,15 +213,27 @@ test('candidates are Normal trains ordered by departure from the station after a
   assert.deepEqual(candidates(state, { station: 'A14' }), []);
 });
 
-test('usableFix rejects loose or stationary fixes, including underground-style tight stationary ones', () => {
-  const base = { lat: 39.1, lon: -77.1, time: T0 };
-  assert.equal(usableFix({ ...base, accuracy: 20, speed: 12 }), true);
-  assert.equal(usableFix({ ...base, accuracy: 50, speed: 12 }), false);
-  assert.equal(usableFix({ ...base, accuracy: 20, speed: 5 }), false);
-  assert.equal(usableFix({ ...base, accuracy: 13, speed: 0 }), false);
-  assert.equal(usableFix({ ...base, accuracy: 40, speed: 0 }), false);
-  assert.equal(usableFix({ ...base, accuracy: 300, speed: 0 }), false);
-  assert.equal(usableFix(null), false);
+test('usableFixes keeps tight fixes that move, by reported speed or by distance from the previous tight fix', () => {
+  const a15 = stations.get('A15');
+  const a14 = stations.get('A14');
+  const at = (pos, time, accuracy, speed) => ({ lat: pos.lat, lon: pos.lon, accuracy, speed, time });
+  assert.equal(usableFixes([at(a15, T0, 20, 12)]).length, 1);
+  assert.equal(usableFixes([at(a15, T0, 50, 12)]).length, 0);
+  assert.equal(usableFixes([at(a15, T0, 20, 5)]).length, 0);
+  const frac = 1200 / distanceM(a15, a14);
+  const along = { lat: a15.lat + (a14.lat - a15.lat) * frac, lon: a15.lon + (a14.lon - a15.lon) * frac };
+  const gap = 60_000;
+  const moving = usableFixes([at(a15, T0, 20, 0), at(along, T0 + gap, 30, 0)]);
+  assert.deepEqual(
+    moving.map((f) => f.time),
+    [T0 + gap],
+  );
+  const frozen = usableFixes([at(a14, T0, 13, 0), at(a14, T0 + 20_000, 13, 0), at(a14, T0 + 40_000, 13, 0)]);
+  assert.deepEqual(frozen, []);
+  assert.deepEqual(usableFixes([at(a15, T0, 20, 0), at(a14, T0 + 10 * 60_000, 20, 0)]), []);
+  assert.deepEqual(usableFixes([at(a15, T0, 20, 0), at(a14, T0 + 1000, 20, 0)]), []);
+  assert.deepEqual(usableFixes([at(a15, T0, 20, 0), at(along, T0 + gap, 300, 0)]), []);
+  assert.deepEqual(usableFixes(null), []);
 });
 
 test('kmhToMs converts the phone unit', () => {
@@ -266,9 +278,16 @@ test('matching above-ground fixes lock the right candidate among two', () => {
   assert.equal(lockFromFixes(state, second, index, stations, ids).trainId, '601');
 });
 
-test('underground-style fixes (tight accuracy, zero speed) never lock, even when positioned on a train', () => {
+test('moving fixes that report zero speed still lock the right candidate', () => {
+  const { state } = run(departures(['605', '606'], [1, 9]));
+  const fixes = fixesAlong(state, '605', [T0 + 4 * STEP, T0 + 6 * STEP, T0 + 8 * STEP]).map((f) => ({ ...f, speed: 0 }));
+  assert.equal(lockFromFixes(state, fixes, index, stations, ['605', '606']).trainId, '605');
+});
+
+test('underground-style fixes (tight accuracy, zero speed, frozen in place) never lock', () => {
   const { state } = run(departures(['610'], [1]));
-  const fixes = fixesAlong(state, '610', [T0 + 4 * STEP, T0 + 6 * STEP, T0 + 8 * STEP]).map((f, i) => ({ ...f, accuracy: [13, 25, 40][i], speed: 0 }));
+  const [first] = fixesAlong(state, '610', [T0 + 4 * STEP]);
+  const fixes = [13, 25, 40].map((accuracy, i) => ({ ...first, accuracy, speed: 0, time: T0 + (4 + 2 * i) * STEP }));
   const lock = lockFromFixes(state, fixes, index, stations, ['610']);
   assert.equal(lock.trainId, null);
   assert.match(lock.reason, /no lock/);
