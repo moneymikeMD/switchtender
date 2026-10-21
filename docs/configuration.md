@@ -81,6 +81,19 @@ On that last point: a morning verdict commits you to how you get home, so a sche
 `"RED"` all become `Red`); a line the page does not list is a startup error, because a misspelt line would otherwise report "no track work" on every run. Leave the list empty and the signal stays
 quiet.
 
+### `[ride]` (optional)
+
+Metro ride alerts (CMB-148, CMB-151). Leave the whole block out and the three `/ride/*` endpoints answer 503. Present, it takes:
+
+| Key | Meaning |
+| --- | --- |
+| `sheet_tab` | Tab in the `[log]` sheet that holds one row per ride (default `rides`). Must differ from `log.sheet_tab` and `log.arrivals_tab`; rides are never joined to verdicts. |
+| `[ride.am]`, `[ride.pm]` | One table per leg. Each takes `start` and `end` (`"HH:MM"`, weekdays only; defaults `05:30`-`10:00` and `16:30`-`22:30`), `gps_window_mins` (default 25 and 5) and `legs`. |
+| `[[ride.<leg>.legs]]` | In riding order: `line` (any spelling of a Metrorail line, canonicalised like `[transit] lines`), `board` and `alight`. The last `alight` is the exit; the ones before are transfers. |
+
+A fence time is judged on the wall clock in `route.timezone`, so the window follows DST. `start` is inside the window, `end` is not. The morning GPS window opens at the fence time plus
+`route.park_and_ride.addl_walk_mins` and runs `gps_window_mins`; the evening one opens at the fence.
+
 ### `[incidents]`
 
 A bounding box for the live incident feed and the District closure feed, covering the part of the route the regional feed does not reach. The box is applied to the closure records here, not on the
@@ -120,3 +133,33 @@ Not in this file, and not in any file. The engine reads them from the environmen
 
 A missing optional key degrades one signal and lowers confidence, charged once as that signal's own "unavailable" result. It never blocks a verdict. A missing required key fails loudly at startup
 rather than silently producing a worse answer, because a tool that quietly stops considering traffic is worse than one that refuses to start.
+
+## Rides
+
+The ride endpoints (CMB-151) keep each ride in one GCS object and start the tracker, a Cloud Run Job, through the Run Admin API. Where those live comes from the environment, read on every call and
+never printed. Any of the required ones missing makes `/ride/start` a 503 naming it; nothing crashes.
+
+| Variable | Used for |
+| --- | --- |
+| `RIDE_BUCKET` | Required. GCS bucket holding `rides/<local-date>-<leg>.json`, one object per ride. Also passed to the Job as `RIDE_BUCKET`. |
+| `RIDE_JOB_PROJECT` | Required. Project of the ride Job. |
+| `RIDE_JOB_REGION` | Region of the ride Job (default `us-east4`). |
+| `RIDE_JOB_NAME` | Name of the ride Job (default `switchtender-ride`). |
+| `SHEETS_ACCESS_TOKEN` | A laptop run's access token for GCS and the Run API, the same one `[log]` uses. On Cloud Run the metadata server supplies the service identity's token instead. |
+
+All three endpoints are `POST`, take the `X-Switchtender-Key` header like `/verdict`, and `leg=am|pm`. No key is 401, a wrong method 405, an unknown leg 400, a GCS failure 503 `ride store failed`.
+
+- `POST /ride/start?leg=am|pm[&at=ISO]` judges `at` (default: now; refused with 400 when more than two minutes from the server clock) against the leg's weekday window. Outside it answers 200
+  `{ started: false, reason }`. Inside it creates the day's object with `ifGenerationMatch=0` (the atomic claim), starts the Job with `RIDE_KEY` set to the object key, and answers 200
+  `{ started: true, ride, gps_from, gps_until, gps_from_epoch, gps_until_epoch, operation }`. The phone sends fixes between `gps_from` and `gps_until`. A second start that day is 200
+  `{ started: false, reason: "already running", ... }` and launches nothing. A start whose launch fails is 502 and leaves the object at `status: launch_failed`; the next start takes that object over and
+  launches again.
+- `POST /ride/fix?leg=am|pm` appends a fix. Fields `lat`, `lon`, `acc` (metres), `kmh` (km/h, as MacroDroid sends `{last_loc_speed_kmh}`) and `at` come as a small JSON body, as query parameters, or
+  both (query wins). `lat` and `lon` are required and ranged; anything that is not a number is 400. The fix is stored in the phone's units with `speed_mps` beside it, however poor the accuracy: the
+  Job decides what a fix is worth. Answers 200 `{ recorded, locked, cancelled, ended, done, status, fixes }`; once `done` is true the phone can stop sending, and nothing more is stored. No ride that day
+  is 404.
+- `POST /ride/cancel?leg=am|pm&reason=off|not-riding` marks the ride cancelled (the Job's ntfy action buttons call this). The first reason sticks. Same body as a fix answer plus `cancelled: true`;
+  no ride is 404.
+
+The object shape, and which fields the endpoints own against which the Job owns, is documented at the top of `src/ride/state.js`. The rides tab (`[ride] sheet_tab`, columns in `RIDES_HEADER` in
+`src/ride/log.js`) is written once per ride by the Job, never by the endpoints.
