@@ -23,8 +23,14 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, ConfigError } from './config.js';
 import { RouteError, START_POINTS, DIRECTIONS } from './routes.js';
 import { runVerdict } from './engine.js';
-import { logArrival, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
+import { logArrival, tokenFromEnvOrMetadata, ARRIVAL_PLACES, ARRIVAL_CHOICES, TRIGGERS } from './log.js';
 import { pushVerdict } from './notify.js';
+import { LEGS, MAX_FENCE_AGE_MS, judgeWindow, gpsWindow } from './ride/config.js';
+import * as rideState from './ride/state.js';
+import { rideEnv, launchRide } from './ride/launch.js';
+
+const { RideStoreError, CANCEL_REASONS, rideKey } = rideState;
+const MAX_BODY_BYTES = 4096;
 
 export const KEY_HEADER = 'x-switchtender-key';
 export const SECRET_ENV = 'SWITCHTENDER_SHARED_SECRET';
@@ -70,6 +76,54 @@ class TimeoutError extends Error {
   }
 }
 
+class BodyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'BodyError';
+  }
+}
+
+// A small JSON body, or {} when there is none. Anything else is a BodyError.
+function readJsonBody(req, limit = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new BodyError(`body larger than ${limit} bytes`));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8').trim();
+      if (text === '') {
+        resolve({});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('not an object');
+        resolve(parsed);
+      } catch {
+        reject(new BodyError('body must be a JSON object'));
+      }
+    });
+    req.on('error', (error) => reject(new BodyError(error.message)));
+  });
+}
+
+// A finite number from a query string or a JSON body; null when absent.
+function number(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(String(value).trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+
+const first = (source, names) => names.map((n) => source[n]).find((v) => v !== undefined && v !== null);
+
 /**
  * Build the server without listening. Tests inject the pipeline and the
  * clock; production passes only config and secret.
@@ -84,6 +138,10 @@ export function createServer({
   fetchImpl = fetch,
   push = pushVerdict,
   recordArrival = logArrival,
+  store = rideState,
+  launch = launchRide,
+  tokenProvider = tokenFromEnvOrMetadata,
+  env = process.env,
 }) {
   if (typeof secret !== 'string' || secret.length === 0) {
     throw new Error(`${SECRET_ENV} is not set`);
@@ -129,6 +187,10 @@ export function createServer({
     }
     if (pathname === '/arrived') {
       await arrived(req, res, url);
+      return pathname;
+    }
+    if (pathname === '/ride/start' || pathname === '/ride/fix' || pathname === '/ride/cancel') {
+      await ride(req, res, url, pathname.slice('/ride/'.length));
       return pathname;
     }
     if (pathname !== '/verdict') {
@@ -253,6 +315,159 @@ export function createServer({
     } catch (error) {
       logger(`arrival error: ${error?.message ?? error}`);
       send(res, 200, { recorded: false, duplicate: false, place, took, at: when.toISOString(), verdictAt: null });
+    }
+  }
+
+  /**
+   * The ride endpoints (CMB-151): start claims the day's ride object and
+   * launches the tracker Job; fix and cancel write into that object. Every
+   * ride answer is JSON; a missing bucket or Job is a 503 that names it.
+   */
+  async function ride(req, res, url, action) {
+    if (req.method !== 'POST') {
+      send(res, 405);
+      return;
+    }
+    if (!keyMatches(req.headers[KEY_HEADER], secret)) {
+      send(res, 401);
+      return;
+    }
+    const leg = url.searchParams.get('leg');
+    if (!LEGS.includes(leg)) {
+      send(res, 400, { error: `leg must be one of ${LEGS.join(', ')}` });
+      return;
+    }
+    let body = {};
+    if (action === 'fix') {
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        send(res, 400, { error: error.message });
+        return;
+      }
+    }
+    const params = { ...body, ...Object.fromEntries(url.searchParams) };
+    const atRaw = params.at;
+    const supplied = atRaw === undefined || atRaw === null || atRaw === '' ? null : new Date(atRaw);
+    if (supplied !== null && Number.isNaN(supplied.getTime())) {
+      send(res, 400, { error: 'at must be an ISO 8601 timestamp' });
+      return;
+    }
+    const received = now();
+    const at = supplied ?? received;
+
+    let fix = null;
+    if (action === 'fix') {
+      const lat = number(first(params, ['lat', 'latitude']));
+      const lon = number(first(params, ['lon', 'lng', 'longitude']));
+      const accuracyM = number(first(params, ['acc', 'accuracy', 'accuracy_m']));
+      const speedKmh = number(first(params, ['kmh', 'speed_kmh', 'speed']));
+      if (lat === null || lon === null || Number.isNaN(lat) || Number.isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        send(res, 400, { error: 'lat and lon must be numbers in range' });
+        return;
+      }
+      if (Number.isNaN(accuracyM) || Number.isNaN(speedKmh) || accuracyM < 0 || speedKmh < 0) {
+        send(res, 400, { error: 'acc and kmh must be numbers of zero or more' });
+        return;
+      }
+      fix = { at, now: received, lat, lon, accuracyM, speedKmh };
+    }
+    const reason = params.reason ?? null;
+    if (action === 'cancel' && !CANCEL_REASONS.includes(reason)) {
+      send(res, 400, { error: `reason must be one of ${CANCEL_REASONS.join(', ')}` });
+      return;
+    }
+
+    if (!config.ride) {
+      send(res, 503, { error: 'ride not configured: config.toml has no [ride] block' });
+      return;
+    }
+    const target = rideEnv(env);
+    if (!target.ok) {
+      send(res, 503, { error: `ride not configured: ${target.error}` });
+      return;
+    }
+
+    const timeZone = config.route.timezone;
+    const walkMins = config.route.park_and_ride?.addl_walk_mins ?? 0;
+    const localDate = judgeWindow({ at, leg, ride: config.ride, timeZone }).localDate;
+    const key = rideKey(localDate, leg);
+    const signal = AbortSignal.timeout(timeoutMs);
+
+    try {
+      const token = await tokenProvider({ fetchImpl, signal });
+      if (!token) {
+        send(res, 503, { error: 'no credentials' });
+        return;
+      }
+      const io = { bucket: target.bucket, token, fetchImpl, signal };
+
+      if (action === 'start') {
+        if (Math.abs(received.getTime() - at.getTime()) > MAX_FENCE_AGE_MS) {
+          send(res, 400, { error: 'at is stale: more than 2 minutes from the server clock', at: at.toISOString(), now: received.toISOString() });
+          return;
+        }
+        const judged = judgeWindow({ at, leg, ride: config.ride, timeZone });
+        if (!judged.inside) {
+          send(res, 200, { started: false, reason: judged.reason, leg, local_date: judged.localDate });
+          return;
+        }
+        const gps = gpsWindow({ at, leg, ride: config.ride, walkMins });
+        const fenceAt = at.toISOString();
+        const windowOut = {
+          gps_from: gps.from.toISOString(),
+          gps_until: gps.until.toISOString(),
+          gps_from_epoch: Math.floor(gps.from.getTime() / 1000),
+          gps_until_epoch: Math.floor(gps.until.getTime() / 1000),
+        };
+
+        const fresh = store.newRide({ key, leg, localDate, timeZone, fenceAt, now: received, gpsFrom: gps.from, gpsUntil: gps.until });
+        let claimed = (await store.claimRide({ ...io, ride: fresh })).claimed;
+        if (!claimed) {
+          const existing = await store.readRide({ ...io, key });
+          if (existing !== null && existing.ride.status === 'launch_failed') {
+            // A failed launch left nothing running; this start takes the ride over.
+            const taken = await store.updateRide({
+              ...io,
+              key,
+              mutate: (r) => (r.status === 'launch_failed' ? store.relaunched(r, { now: received, gpsFrom: gps.from, gpsUntil: gps.until, fenceAt }) : null),
+            });
+            claimed = Boolean(taken?.updated);
+          }
+          if (!claimed) {
+            const current = existing ?? (await store.readRide({ ...io, key }));
+            send(res, 200, { started: false, reason: 'already running', leg, ride: key, ...(current ? store.summary(current.ride) : {}), ...windowOut });
+            return;
+          }
+        }
+
+        const launched = await launch({ env: target, rideKey: key, token, fetchImpl, signal });
+        await store.updateRide({ ...io, key, mutate: (r) => store.withLaunch(r, { ...launched, now: received }) });
+        if (!launched.ok) {
+          logger(`ride launch failed: ${launched.error}`);
+          send(res, 502, { started: false, reason: 'launch failed', leg, ride: key, status: 'launch_failed', error: launched.error });
+          return;
+        }
+        send(res, 200, { started: true, leg, ride: key, status: 'launched', local_date: localDate, operation: launched.operation, ...windowOut });
+        return;
+      }
+
+      const mutate = action === 'fix' ? (r) => (store.summary(r).done ? null : store.withFix(r, fix)) : (r) => store.withCancel(r, { reason, now: received });
+      const result = await store.updateRide({ ...io, key, mutate });
+      if (result === null) {
+        send(res, 404, { error: 'no ride', leg, ride: key });
+        return;
+      }
+      const s = store.summary(result.ride);
+      if (action === 'fix') send(res, 200, { recorded: result.updated, leg, ride: key, ...s });
+      else send(res, 200, { cancelled: true, reason: result.ride.cancel?.reason ?? reason, leg, ride: key, ...s });
+    } catch (error) {
+      if (error instanceof RideStoreError || error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        logger(`ride ${action} failed: ${error.message}`);
+        send(res, 503, { error: 'ride store failed' });
+        return;
+      }
+      throw error;
     }
   }
 

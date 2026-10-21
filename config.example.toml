@@ -102,6 +102,56 @@ url = "https://switchtender.example.com"
 # equivalent source, so it names none and the signal stays quiet).
 lines = []
 
+[ride]
+# Metro ride alerts (CMB-148). A ride starts when the phone's geofence fires
+# inside a leg's weekday window: the morning one from the park-and-ride lot,
+# the evening one from the entrance of the station the ride home starts at.
+# The tracker (a Cloud Run Job) follows the train and buzzes the phone before
+# each transfer and the exit; this block says when and along which legs.
+# Leave the whole block out and the ride endpoints answer 503.
+#
+# sheet_tab is the tab in the [log] sheet that holds one row per ride; it
+# must differ from the verdict and arrival tabs.
+sheet_tab = "rides"
+
+[ride.am]
+# Window, local time on weekdays, inside which a lot fence starts a ride.
+start = "05:30"
+end = "10:00"
+# The phone sends GPS fixes from the fence time plus the lot's addl_walk_mins
+# for this many minutes: long enough to cover the above-ground stretch where
+# the tracker can match a fix to a train.
+gps_window_mins = 25
+
+# Legs in riding order: the line boarded, where, and where to get off. The
+# last alight is the exit; every earlier one is a transfer.
+[[ride.am.legs]]
+line = "Red"
+board = "Alewife"
+alight = "Park Street"
+
+[[ride.am.legs]]
+line = "Green"
+board = "Park Street"
+alight = "Boylston"
+
+[ride.pm]
+start = "16:30"
+end = "22:30"
+# The evening fence is at the station entrance, so fixes are wanted only for
+# the few minutes it takes to reach the platform.
+gps_window_mins = 5
+
+[[ride.pm.legs]]
+line = "Green"
+board = "Boylston"
+alight = "Park Street"
+
+[[ride.pm.legs]]
+line = "Red"
+board = "Park Street"
+alight = "Alewife"
+
 [log]
 # One wide row per verdict, appended to a Google Sheet and queried through a
 # BigQuery external table (scripts/bq-external-table.sh). A failed write is

@@ -267,3 +267,14 @@ test('[service] url is optional, must be an https origin, and the example names 
   assert.throws(() => parseConfig(at('"not a url"')), /not a URL/);
   assert.throws(() => parseConfig(at('42')), /should be string/);
 });
+
+test('[ride] loads from the example, is optional, and the rides tab may not reuse a log tab (CMB-151)', () => {
+  const c = parseConfig(exampleText);
+  assert.equal(c.ride.sheet_tab, 'rides');
+  assert.equal(c.ride.am.start, '05:30');
+  assert.equal(c.ride.pm.end, '22:30');
+  assert.equal(c.ride.am.legs[0].line, 'Red');
+  assert.equal(parseConfig(exampleText.replace(/^\[ride\][\s\S]*?(?=^\[log\])/m, '')).ride, null);
+  assert.throws(() => parseConfig(exampleText.replace('sheet_tab = "rides"', 'sheet_tab = "verdicts"')), /ride\.sheet_tab must differ/);
+  assert.throws(() => parseConfig(exampleText.replace('gps_window_mins = 25', 'gps_window_mins = "long"')), /ride\.am\.gps_window_mins/);
+});

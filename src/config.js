@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'smol-toml';
 
 import { LINES } from './trackwork.js';
+import { rideBlock } from './ride/config.js';
 
 /** Secrets, and what losing each one costs. */
 export const SECRETS = {
@@ -280,11 +281,18 @@ export function parseConfig(text) {
 
   const venues = (raw.venues ?? []).map((v, i) => venueEntry(v, i));
 
+  const log = logBlock(raw);
+  const ride = rideBlock(raw);
+  if (ride && (ride.sheet_tab === log.sheet_tab || ride.sheet_tab === log.arrivals_tab)) {
+    throw new ConfigError('config: ride.sheet_tab must differ from log.sheet_tab and log.arrivals_tab; rides have their own columns');
+  }
+
   return {
     route,
     service: serviceBlock(raw),
-    log: logBlock(raw),
+    log,
     transit: transitBlock(raw),
+    ride,
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
     decision: {
       transit_wins_ties: must(raw, 'decision.transit_wins_ties', 'boolean'),
