@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/moneymikeMD/switchtender/compare/v1.8.0...v1.9.0) (2026-10-21)
+
+
+### Features
+
+* phone macros that start the morning ride and buzz on ride alerts (CMB-154) ([#67](https://github.com/moneymikeMD/switchtender/issues/67)) ([8fd5f22](https://github.com/moneymikeMD/switchtender/commit/8fd5f22fb7d483c9e4c7d90207db903f803b0312))
+
+
+### Bug Fixes
+
+* lock the ride from fixes that move, not from the phone's reported speed ([#65](https://github.com/moneymikeMD/switchtender/issues/65)) ([1cdc000](https://github.com/moneymikeMD/switchtender/commit/1cdc000e699645ca9b0810f182767f76f65d71dd))
+
 ## [1.8.0](https://github.com/moneymikeMD/switchtender/compare/v1.7.0...v1.8.0) (2026-10-21)
 
 
