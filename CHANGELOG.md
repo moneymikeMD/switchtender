@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/moneymikeMD/switchtender/compare/v1.5.0...v1.6.0) (2026-10-21)
+
+
+### Features
+
+* start, feed and cancel a ride over HTTP (CMB-151) ([#58](https://github.com/moneymikeMD/switchtender/issues/58)) ([4a05160](https://github.com/moneymikeMD/switchtender/commit/4a05160a227340ed2b1ac7cae1f83f551e70a70a))
+* track the owner's train in WMATA train positions (CMB-150) ([#59](https://github.com/moneymikeMD/switchtender/issues/59)) ([78169bb](https://github.com/moneymikeMD/switchtender/commit/78169bbfad0f1e5567b5256fcb74f131426534db))
+
 ## [1.5.0](https://github.com/moneymikeMD/switchtender/compare/v1.4.0...v1.5.0) (2026-10-01)
 
 
