@@ -353,7 +353,8 @@ test('a cancel in the object stops the loop with no further push', async () => {
 
 test('no lock by gps_until plus the grace: one vibrating status, end no-lock, never a guess', async () => {
   const t = morningTrains();
-  const w = world({ trains: Object.values(t), fixes: lockFixes(t.r1).map((f) => ({ ...f, speed_kmh: 0, speed_mps: 0, accuracy_m: 13 })) });
+  const frozen = lockFixes(t.r1).map((f, i, all) => ({ ...f, lat: all[0].lat, lon: all[0].lon, speed_kmh: 0, speed_mps: 0, accuracy_m: 13 }));
+  const w = world({ trains: Object.values(t), fixes: frozen });
   const result = await runRide(w.deps);
   assert.deepEqual(result, { reason: 'no-lock', exitCode: 0 });
   assert.equal(w.ride.lock, null);

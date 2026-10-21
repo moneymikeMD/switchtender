@@ -7,6 +7,8 @@
 export const LINES = ['RD', 'GR'];
 export const MAX_FIX_ACCURACY_M = 50;
 export const MIN_FIX_SPEED_MS = 5;
+export const MAX_FIX_SPEED_MS = 40;
+export const MAX_FIX_GAP_MS = 120_000;
 export const LOST_AFTER_MISSED_POLLS = 2;
 
 const TERMINAL_DEPARTURE_WINDOW = 15;
@@ -249,17 +251,25 @@ export function candidates(state, { station, after = 0, line = null } = {}) {
     .map((t) => t.id);
 }
 
-/** True when a GPS fix is trustworthy enough to place a train: tight and moving. */
-export function usableFix(fix) {
-  return (
-    Number.isFinite(fix?.lat) &&
-    Number.isFinite(fix?.lon) &&
-    Number.isFinite(fix?.time) &&
-    Number.isFinite(fix?.accuracy) &&
-    fix.accuracy < MAX_FIX_ACCURACY_M &&
-    Number.isFinite(fix?.speed) &&
-    fix.speed > MIN_FIX_SPEED_MS
-  );
+const tightFix = (fix) =>
+  Number.isFinite(fix?.lat) && Number.isFinite(fix?.lon) && Number.isFinite(fix?.time) && Number.isFinite(fix?.accuracy) && fix.accuracy < MAX_FIX_ACCURACY_M;
+
+/**
+ * The fixes trustworthy enough to place a train: tight, and moving by the phone's own speed or by the distance
+ * from the previous tight fix. The phone reported speed 0 on a moving above-ground train (2026-10-21).
+ */
+export function usableFixes(fixes) {
+  const tight = (fixes ?? []).filter(tightFix).sort((a, b) => a.time - b.time);
+  const out = [];
+  let prev = null;
+  for (const fix of tight) {
+    const reported = Number.isFinite(fix.speed) && fix.speed > MIN_FIX_SPEED_MS;
+    const gap = prev ? fix.time - prev.time : 0;
+    const derived = gap > 0 && gap <= MAX_FIX_GAP_MS ? distanceM(prev, fix) / (gap / 1000) : 0;
+    if (reported || (derived > MIN_FIX_SPEED_MS && derived < MAX_FIX_SPEED_MS)) out.push(fix);
+    prev = fix;
+  }
+  return out;
 }
 
 export function distanceM(a, b) {
@@ -312,7 +322,7 @@ function seqAt(trail, time) {
  * Returns `{ trainId }` on a lock, or `{ trainId: null, reason }` otherwise; never a guess.
  */
 export function lockFromFixes(state, fixes, index, stations, ids) {
-  const usable = (fixes ?? []).filter(usableFix);
+  const usable = usableFixes(fixes);
   if (usable.length < LOCK_MIN_FIXES) return { trainId: null, reason: `no lock: ${usable.length} usable fix(es), need ${LOCK_MIN_FIXES}` };
   const list = (ids ?? Object.keys(state?.trains ?? {})).map((id) => state?.trains?.[id]).filter(Boolean);
   if (list.length === 0) return { trainId: null, reason: 'no lock: no candidates' };
