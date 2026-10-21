@@ -28,7 +28,7 @@ BASE="https://api.wmata.com"
 mkdir -p "$OUT"
 
 fetch() {
-  curl -sS --fail --max-time 20 -H "api_key: $TRANSIT_API_KEY" "$BASE$1"
+  printf 'api_key: %s\n' "$TRANSIT_API_KEY" | curl -sS --fail --max-time 20 -H @- "$BASE$1"
 }
 
 fetch '/TrainPositions/StandardRoutes?contentType=json' >"$OUT/standard-routes.json"
