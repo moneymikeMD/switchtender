@@ -124,7 +124,13 @@ end = "10:00"
 gps_window_mins = 25
 
 # Legs in riding order: the line boarded, where, and where to get off. The
-# last alight is the exit; every earlier one is a transfer.
+# last alight is the exit; every earlier one is a transfer. board and alight
+# are the names the alerts use. The tracker Job (CMB-152) is WMATA-only: it
+# also needs each station as a WMATA code (board_code, alight_code, and
+# optionally alert_code for the station it alerts at, default the one before
+# alight along the track), e.g. board_code = "A15", alight_code = "B01".
+# Without the codes the endpoints work and the Job ends the ride at once,
+# reason "config". This Boston example has none.
 [[ride.am.legs]]
 line = "Red"
 board = "Alewife"

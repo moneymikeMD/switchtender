@@ -8,6 +8,7 @@ import {
   RIDE_VERSION,
   CANCEL_REASONS,
   UPDATE_ATTEMPTS,
+  STALE_LAUNCH_MS,
   RideStoreError,
   rideKey,
   newRide,
@@ -18,6 +19,12 @@ import {
   relaunched,
   withFix,
   withCancel,
+  launchStale,
+  withLock,
+  withTracking,
+  withAlert,
+  withStatus,
+  withEnded,
   summary,
 } from '../src/ride/state.js';
 
@@ -37,9 +44,13 @@ const fresh = () =>
     gpsUntil: new Date('2026-10-21T11:45:00Z'),
   });
 
-test('a new ride has the documented shape: endpoint fields filled, Job fields empty', () => {
+test('a new ride has the documented shape: endpoint fields filled, Job fields empty, a random cancel token', () => {
   assert.equal(rideKey('2026-10-21', 'pm'), 'rides/2026-10-21-pm.json');
-  assert.deepEqual(fresh(), {
+  const ride = fresh();
+  assert.match(ride.cancel_token, /^[A-Za-z0-9_-]{32,}$/);
+  assert.notEqual(ride.cancel_token, fresh().cancel_token);
+  const { cancel_token, ...rest } = ride;
+  assert.deepEqual(rest, {
     version: RIDE_VERSION,
     key: 'rides/2026-10-21-am.json',
     leg: 'am',
@@ -54,10 +65,55 @@ test('a new ride has the documented shape: endpoint fields filled, Job fields em
     fixes: [],
     cancel: null,
     lock: null,
+    tracking: null,
     alerts: [],
+    statuses: [],
     ended: null,
   });
   assert.deepEqual([...CANCEL_REASONS], ['off', 'not-riding']);
+  assert.ok(!('cancel_token' in summary(ride)));
+});
+
+test('a launch is stale when it failed or when "launching" is older than STALE_LAUNCH_MS', () => {
+  const ride = fresh();
+  const later = new Date(now.getTime() + STALE_LAUNCH_MS + 1);
+  assert.equal(launchStale(ride, now), false);
+  assert.equal(launchStale(ride, new Date(now.getTime() + STALE_LAUNCH_MS)), false);
+  assert.equal(launchStale(ride, later), true);
+  assert.equal(launchStale(withLaunch(ride, { ok: true, now }), later), false);
+  assert.equal(launchStale(withLaunch(ride, { ok: false, error: 'x', now }), now), true);
+  assert.equal(launchStale({ ...ride, claimed_at: 'garbage' }, now), true);
+});
+
+test('the Job mutations: lock, tracking, alerts and statuses at most once per key, the first end wins', () => {
+  const ride = fresh();
+  const locked = withLock(ride, { trainId: '508', now, departedAt: '2026-10-21T11:22:00.000Z', meanDistanceM: 41 });
+  assert.deepEqual(locked.lock, {
+    method: 'gps',
+    train_id: '508',
+    at: '2026-10-21T11:15:00.000Z',
+    departed_at: '2026-10-21T11:22:00.000Z',
+    mean_distance_m: 41,
+  });
+  const tracked = withTracking(withTracking(locked, { phase: 'leg0', transfer_at: null, candidates: [] }), { candidates: ['1', '2'] });
+  assert.deepEqual(tracked.tracking, { phase: 'leg0', transfer_at: null, candidates: ['1', '2'] });
+
+  const alerted = withAlert(ride, { key: 'leg0', now, station: 'A01', trainId: '508', circuit: 1234, title: 'alert', text: 'Next stop.' });
+  assert.deepEqual(alerted.alerts, [
+    { key: 'leg0', at: '2026-10-21T11:15:00.000Z', station: 'A01', train_id: '508', circuit: 1234, title: 'alert', text: 'Next stop.' },
+  ]);
+  assert.equal(withAlert(alerted, { key: 'leg0', now, station: 'A01', trainId: '508', title: 'alert', text: 'again' }), null);
+  assert.equal(withAlert(alerted, { key: 'leg1:0', now, station: 'F03', trainId: '9', title: 'alert', text: 'x' }).alerts.length, 2);
+
+  const pushed = withStatus(ride, { key: 'lock', now, text: 'Tracking' });
+  assert.deepEqual(pushed.statuses, [{ key: 'lock', at: '2026-10-21T11:15:00.000Z', text: 'Tracking' }]);
+  assert.equal(withStatus(pushed, { key: 'lock', now, text: 'Tracking' }), null);
+
+  const ended = withEnded(ride, { reason: 'done', now });
+  assert.equal(ended.status, 'ended');
+  assert.deepEqual(ended.ended, { reason: 'done', at: '2026-10-21T11:15:00.000Z' });
+  assert.deepEqual(withEnded(ended, { reason: 'crash', now: new Date() }).ended, ended.ended);
+  assert.deepEqual(ride.alerts, [], 'the input is not mutated');
 });
 
 test('claimRide creates the object with ifGenerationMatch=0 and a bearer token; a 412 means someone else did', async () => {

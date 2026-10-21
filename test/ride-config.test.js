@@ -17,10 +17,33 @@ test('the example [ride] block parses with both legs, windows, GPS windows and t
   assert.deepEqual({ start: ride.am.start, end: ride.am.end, gps: ride.am.gps_window_mins }, { start: '05:30', end: '10:00', gps: 25 });
   assert.deepEqual({ start: ride.pm.start, end: ride.pm.end, gps: ride.pm.gps_window_mins }, { start: '16:30', end: '22:30', gps: 5 });
   assert.deepEqual(ride.am.legs, [
-    { line: 'Red', board: 'Alewife', alight: 'Park Street' },
-    { line: 'Green', board: 'Park Street', alight: 'Boylston' },
+    { line: 'Red', board: 'Alewife', alight: 'Park Street', board_code: null, alight_code: null, alert_code: null },
+    { line: 'Green', board: 'Park Street', alight: 'Boylston', board_code: null, alight_code: null, alert_code: null },
   ]);
   assert.equal(ride.pm.legs.length, 2);
+});
+
+test('a leg takes WMATA station codes for the tracker, upper-cased, and refuses anything else', () => {
+  const legs = [
+    { line: 'Red', board: 'Shady Grove', alight: 'Gallery Place', board_code: 'a15', alight_code: 'B01' },
+    { line: 'Green', board: 'Gallery Place', alight: 'Waterfront', board_code: 'F01', alight_code: 'F04', alert_code: ' F03 ' },
+  ];
+  const parsed = rideBlock({ ride: { am: { legs } } }).am.legs;
+  assert.deepEqual(
+    parsed.map((l) => [l.board_code, l.alight_code, l.alert_code]),
+    [
+      ['A15', 'B01', null],
+      ['F01', 'F04', 'F03'],
+    ],
+  );
+  for (const bad of ['A1', 'Metro Center', 7, '']) {
+    assert.throws(
+      () => rideBlock({ ride: { am: { legs: [{ ...legs[0], board_code: bad }] } } }),
+      /ride\.am\.legs\[0\]\.board_code.*WMATA station code/,
+      String(bad),
+    );
+  }
+  assert.throws(() => rideBlock({ ride: { am: { legs: [{ ...legs[0], alert_code: 'XYZ' }] } } }), /alert_code/);
 });
 
 test('[ride] is optional: absent is null, and a bare block takes every default', () => {

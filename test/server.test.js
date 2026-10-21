@@ -746,6 +746,73 @@ test('/ride/cancel marks the ride with a known reason; the first reason sticks; 
   assert.equal(none.status, 404);
 });
 
+test('/ride/cancel takes the ride token in place of the key (CMB-152); a wrong token is 401; no answer ever carries the token', async () => {
+  const { base, store } = await startRide();
+  const started = await fetch(`${base}/ride/start?leg=am`, { method: 'POST', headers });
+  const token = store.objects.get('rides/2026-10-21-am.json').ride.cancel_token;
+  assert.match(token, /^[A-Za-z0-9_-]{32,}$/);
+  assert.ok(!(await started.text()).includes(token));
+  const fix = await fetch(`${base}/ride/fix?leg=am&lat=1&lon=2`, { method: 'POST', headers });
+  assert.ok(!(await fix.text()).includes(token));
+
+  assert.equal((await fetch(`${base}/ride/cancel?leg=am&reason=off`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/ride/cancel?leg=am&reason=off&token=${token.slice(0, -1)}x`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/ride/cancel?leg=am&reason=off&token=short`, { method: 'POST' })).status, 401);
+  assert.equal(store.objects.get('rides/2026-10-21-am.json').ride.cancel, null);
+  // The token is no key: it opens nothing but a cancel of its own ride.
+  assert.equal((await fetch(`${base}/ride/fix?leg=am&lat=1&lon=2&token=${token}`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/ride/start?leg=am&token=${token}`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/ride/cancel?leg=pm&reason=off&token=${token}`, { method: 'POST' })).status, 404);
+
+  const ok = await fetch(`${base}/ride/cancel?leg=am&reason=off&token=${token}`, { method: 'POST' });
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.equal(body.cancelled, true);
+  assert.equal(body.reason, 'off');
+  assert.ok(!JSON.stringify(body).includes(token));
+  assert.deepEqual(store.objects.get('rides/2026-10-21-am.json').ride.cancel, { reason: 'off', at: '2026-10-21T11:15:00.000Z' });
+  // The key still works too.
+  assert.equal((await fetch(`${base}/ride/cancel?leg=am&reason=not-riding`, { method: 'POST', headers })).status, 200);
+});
+
+test('/ride/cancel with a token but no ride configuration is a 503, never a 500', async () => {
+  const noEnv = await startRide({ env: {} });
+  const res = await fetch(`${noEnv.base}/ride/cancel?leg=am&reason=off&token=bad`, { method: 'POST' });
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /RIDE_BUCKET is not set/);
+});
+
+test('a ride stuck at "launching" for over two minutes is re-claimed and relaunched by the next start', async () => {
+  let clock = FENCE;
+  const launches = [];
+  const { base, store } = await startRide({
+    now: () => clock,
+    launch: async (args) => {
+      launches.push(args);
+      return { ok: true, operation: `op-${launches.length}`, error: null };
+    },
+  });
+  assert.equal((await fetch(`${base}/ride/start?leg=am`, { method: 'POST', headers })).status, 200);
+  // A Job that never reported back: status stays launching.
+  store.objects.get('rides/2026-10-21-am.json').ride.status = 'launching';
+  store.objects.get('rides/2026-10-21-am.json').ride.launch = null;
+  clock = new Date(FENCE.getTime() + 90_000);
+  const soon = await fetch(`${base}/ride/start?leg=am`, { method: 'POST', headers });
+  assert.equal((await soon.json()).reason, 'already running');
+  assert.equal(launches.length, 1);
+  clock = new Date(FENCE.getTime() + rideState.STALE_LAUNCH_MS + 1000);
+  const retry = await fetch(`${base}/ride/start?leg=am`, { method: 'POST', headers });
+  assert.equal(retry.status, 200);
+  const body = await retry.json();
+  assert.equal(body.started, true);
+  assert.equal(body.operation, 'op-2');
+  assert.equal(launches.length, 2);
+  const stored = store.objects.get('rides/2026-10-21-am.json').ride;
+  assert.equal(stored.status, 'launched');
+  assert.equal(stored.claimed_at, clock.toISOString());
+  assert.equal(stored.launch.operation, 'op-2');
+});
+
 test('a GCS failure during a ride call is a 503 that names the store and is logged, never a crash', async () => {
   const lines = [];
   const store = {

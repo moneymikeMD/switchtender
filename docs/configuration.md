@@ -89,7 +89,8 @@ Metro ride alerts (CMB-148, CMB-151). Leave the whole block out and the three `/
 | --- | --- |
 | `sheet_tab` | Tab in the `[log]` sheet that holds one row per ride (default `rides`). Must differ from `log.sheet_tab` and `log.arrivals_tab`; rides are never joined to verdicts. |
 | `[ride.am]`, `[ride.pm]` | One table per leg. Each takes `start` and `end` (`"HH:MM"`, weekdays only; defaults `05:30`-`10:00` and `16:30`-`22:30`), `gps_window_mins` (default 25 and 5) and `legs`. |
-| `[[ride.<leg>.legs]]` | In riding order: `line` (any spelling of a Metrorail line, canonicalised like `[transit] lines`), `board` and `alight`. The last `alight` is the exit; the ones before are transfers. |
+| `[[ride.<leg>.legs]]` | In riding order: `line` (any spelling of a Metrorail line, canonicalised like `[transit] lines`), `board` and `alight`, the names the alerts use. The last `alight` is the exit; the ones before are transfers. |
+| `board_code`, `alight_code`, `alert_code` | Per leg, optional here and required by the tracker Job: WMATA station codes (`"A15"`), upper-cased. `alert_code` names the station the alert fires on arrival at; left out, it is the station before `alight` along the track, so a leg must span at least two stops. The Job is WMATA-only and follows at most two legs; the direction of travel comes from the track's station order, never from the feed's `DirectionNum`. |
 
 A fence time is judged on the wall clock in `route.timezone`, so the window follows DST. `start` is inside the window, `end` is not. The morning GPS window opens at the fence time plus
 `route.park_and_ride.addl_walk_mins` and runs `gps_window_mins`; the evening one opens at the fence.
@@ -136,8 +137,8 @@ rather than silently producing a worse answer, because a tool that quietly stops
 
 ## Rides
 
-The ride endpoints (CMB-151) keep each ride in one GCS object and start the tracker, a Cloud Run Job, through the Run Admin API. Where those live comes from the environment, read on every call and
-never printed. Any of the required ones missing makes `/ride/start` a 503 naming it; nothing crashes.
+The ride endpoints (CMB-151) keep each ride in one GCS object and start the tracker, a Cloud Run Job (CMB-152, `src/ride/job.js`, the same image), through the Run Admin API. Where those live comes
+from the environment, read on every call and never printed. Any of the required ones missing makes `/ride/start` a 503 naming it; nothing crashes.
 
 | Variable | Used for |
 | --- | --- |
@@ -147,19 +148,65 @@ never printed. Any of the required ones missing makes `/ride/start` a 503 naming
 | `RIDE_JOB_NAME` | Name of the ride Job (default `switchtender-ride`). |
 | `SHEETS_ACCESS_TOKEN` | A laptop run's access token for GCS and the Run API, the same one `[log]` uses. On Cloud Run the metadata server supplies the service identity's token instead. |
 
+The Job reads its own environment once at start and exits 2 with the first missing name, touching nothing:
+
+| Variable | Used for |
+| --- | --- |
+| `RIDE_KEY` | Required. The ride object's key, set per execution by `/ride/start`. |
+| `RIDE_BUCKET` | Required. The bucket above, set per execution by `/ride/start`. |
+| `RIDE_NTFY_TOPIC` | Required. The ntfy.sh topic the ride pushes go to. A second long random slug, never `NTFY_TOPIC`: the phone vibrates on this one and must not on the 7:30 verdict. |
+| `RIDE_SERVICE_URL` | Required. The service's own URL, for the cancel buttons on each alert (`<url>/ride/cancel?...`). |
+| `TRANSIT_API_KEY` | Required. The WMATA key, sent as the `api_key` header, never in a URL or a log line. |
+| `SWITCHTENDER_CONFIG` | The config file (default `config.toml`), for the leg codes, `route.timezone` and `[log] sheet_id`. The Job never needs `ROUTES_API_KEY`. |
+| `SHEETS_ACCESS_TOKEN` | A laptop run's token for GCS and Sheets, as above. |
+
 All three endpoints are `POST`, take the `X-Switchtender-Key` header like `/verdict`, and `leg=am|pm`. No key is 401, a wrong method 405, an unknown leg 400, a GCS failure 503 `ride store failed`.
 
 - `POST /ride/start?leg=am|pm[&at=ISO]` judges `at` (default: now; refused with 400 when more than two minutes from the server clock) against the leg's weekday window. Outside it answers 200
   `{ started: false, reason }`. Inside it creates the day's object with `ifGenerationMatch=0` (the atomic claim), starts the Job with `RIDE_KEY` set to the object key, and answers 200
   `{ started: true, ride, gps_from, gps_until, gps_from_epoch, gps_until_epoch, operation }`. The phone sends fixes between `gps_from` and `gps_until`. A second start that day is 200
   `{ started: false, reason: "already running", ... }` and launches nothing. A start whose launch fails is 502 and leaves the object at `status: launch_failed`; the next start takes that object over and
-  launches again.
+  launches again, as it does one still `launching` more than two minutes after its claim (a Job that never reported back).
 - `POST /ride/fix?leg=am|pm` appends a fix. Fields `lat`, `lon`, `acc` (metres), `kmh` (km/h, as MacroDroid sends `{last_loc_speed_kmh}`) and `at` come as a small JSON body, as query parameters, or
   both (query wins). `lat` and `lon` are required and ranged; anything that is not a number is 400. The fix is stored in the phone's units with `speed_mps` beside it, however poor the accuracy: the
   Job decides what a fix is worth. Answers 200 `{ recorded, locked, cancelled, ended, done, status, fixes }`; once `done` is true the phone can stop sending, and nothing more is stored. No ride that day
   is 404.
-- `POST /ride/cancel?leg=am|pm&reason=off|not-riding` marks the ride cancelled (the Job's ntfy action buttons call this). The first reason sticks. Same body as a fix answer plus `cancelled: true`;
-  no ride is 404.
+- `POST /ride/cancel?leg=am|pm&reason=off|not-riding` marks the ride cancelled. The first reason sticks. Same body as a fix answer plus `cancelled: true`; no ride is 404. In place of the key it
+  accepts `&token=<cancel_token>`, the random token the ride object was created with: the Job's ntfy buttons carry it, since ntfy keeps action URLs in the message for anyone holding the topic to read,
+  and it opens nothing but a cancel of its own ride. A wrong token is 401; the token is compared in constant time and never appears in any endpoint answer.
 
 The object shape, and which fields the endpoints own against which the Job owns, is documented at the top of `src/ride/state.js`. The rides tab (`[ride] sheet_tab`, columns in `RIDES_HEADER` in
 `src/ride/log.js`) is written once per ride by the Job, never by the endpoints.
+
+### The Job
+
+One execution per ride, started by `/ride/start`. Morning only for now: a `pm` ride ends at once with reason `pm-not-built` (the evening start needs an underground-GPS gate the phone spike, CMB-149,
+showed does not exist). The morning run:
+
+1. Fetches StandardRoutes and jStations once, then polls TrainPositions every 15 s, every 5 s once a followed train is within one station of its alert station, and re-reads the ride object each poll
+   for new fixes and a cancel.
+2. Locks the first leg's train: candidates are Normal trains that left `board_code` the right way at or after `gps_from`; the phone's fixes (`accuracy_m` under 50 m, `speed_mps` over 5) must sit on
+   exactly one of them (`src/ride/track.js`). On a lock the object gets `lock`, the phone is told to stop sending, and a quiet status goes out (`Tracking the 8:14 from Shady Grove`). No lock by
+   `gps_until` plus two minutes ends the ride, reason `no-lock`, with a vibrating `Not tracking. Watch the stops.`; the Job never guesses a train.
+3. Alerts on the locked train's arrival at the first leg's alert station (`Next stop Gallery Place. Transfer to Green.`). On its arrival at `alight_code` the second leg starts: the first two trains to
+   leave that leg's `board_code` the right way at or after that arrival plus two minutes become candidates, and each alerts on arrival at the second leg's alert station naming its departure
+   (`Next stop Waterfront. You're on the 8:47 from Gallery Place.`). The first candidate's alert vibrates until dismissed; the second's buzzes once.
+4. Ends five minutes after the last alert (`done`), on a cancel (`cancelled`), when the locked train leaves the feed or goes out of service (`lost`, vibrating status), or after two hours (`timeout`,
+   vibrating status); the feed failing two polls in a row is one vibrating status and polling goes on. Every end writes `ended { reason, at }` and the rides row and exits 0. A crash writes
+   `ended { reason: "crash" }` and a vibrating status as best it can and exits 1, as do a feed that will not bootstrap (`feed`) and a leg without codes (`config`).
+
+Every alert and status push is appended to the object (`alerts`, `statuses`) before it is sent, keyed, so a restarted Job never sends one twice.
+
+### Ride push wire format (for the phone macro, CMB-154)
+
+Every ride push is `POST https://ntfy.sh/<RIDE_NTFY_TOPIC>` with:
+
+| Header or body | Value |
+| --- | --- |
+| `Title` | `Ride alert` for an alert that vibrates until dismissed; `Ride` for an alert that buzzes once; `Ride status` for a status line. |
+| `Priority` | `5` for every alert and for a vibrating status; `3` for the quiet lock status. |
+| body | `<text>\|<send epoch seconds>`, e.g. `Next stop Gallery Place. Transfer to Green.\|1761045600`. Split on `\|`; the last part is when it was sent, so delay is `{system_time}` minus it. |
+| `Actions` | Alerts only: `http, I'm off, <RIDE_SERVICE_URL>/ride/cancel?leg=am&reason=off&token=<cancel_token>, clear=true; http, Not riding, <RIDE_SERVICE_URL>/ride/cancel?leg=am&reason=not-riding&token=<cancel_token>, clear=true` (ntfy `http` actions, default method POST). |
+
+The texts: `Tracking the <h:mm> from <board>` (quiet status on lock), `Not tracking. Watch the stops.` (every vibrating status), `Next stop <alight>. Transfer to <line>.` (first leg),
+`Next stop <alight>. You're on the <h:mm> from <board>.` (second leg). Times are local to `route.timezone` without a leading zero. The constants live in `src/ride/notify.js`.

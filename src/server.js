@@ -322,13 +322,17 @@ export function createServer({
    * The ride endpoints (CMB-151): start claims the day's ride object and
    * launches the tracker Job; fix and cancel write into that object. Every
    * ride answer is JSON; a missing bucket or Job is a 503 that names it.
+   * A cancel may carry the ride's own `token` instead of the key (CMB-152):
+   * the Job's ntfy buttons hold it, and it is checked against the object.
    */
   async function ride(req, res, url, action) {
     if (req.method !== 'POST') {
       send(res, 405);
       return;
     }
-    if (!keyMatches(req.headers[KEY_HEADER], secret)) {
+    const cancelToken = action === 'cancel' ? url.searchParams.get('token') : null;
+    const viaToken = !keyMatches(req.headers[KEY_HEADER], secret);
+    if (viaToken && !cancelToken) {
       send(res, 401);
       return;
     }
@@ -425,12 +429,12 @@ export function createServer({
         let claimed = (await store.claimRide({ ...io, ride: fresh })).claimed;
         if (!claimed) {
           const existing = await store.readRide({ ...io, key });
-          if (existing !== null && existing.ride.status === 'launch_failed') {
-            // A failed launch left nothing running; this start takes the ride over.
+          if (existing !== null && store.launchStale(existing.ride, received)) {
+            // A failed or stalled launch left nothing running; this start takes the ride over.
             const taken = await store.updateRide({
               ...io,
               key,
-              mutate: (r) => (r.status === 'launch_failed' ? store.relaunched(r, { now: received, gpsFrom: gps.from, gpsUntil: gps.until, fenceAt }) : null),
+              mutate: (r) => (store.launchStale(r, received) ? store.relaunched(r, { now: received, gpsFrom: gps.from, gpsUntil: gps.until, fenceAt }) : null),
             });
             claimed = Boolean(taken?.updated);
           }
@@ -452,10 +456,22 @@ export function createServer({
         return;
       }
 
-      const mutate = action === 'fix' ? (r) => (store.summary(r).done ? null : store.withFix(r, fix)) : (r) => store.withCancel(r, { reason, now: received });
+      let tokenRejected = false;
+      const cancel = (r) => {
+        if (viaToken && !keyMatches(cancelToken, r.cancel_token)) {
+          tokenRejected = true;
+          return null;
+        }
+        return store.withCancel(r, { reason, now: received });
+      };
+      const mutate = action === 'fix' ? (r) => (store.summary(r).done ? null : store.withFix(r, fix)) : cancel;
       const result = await store.updateRide({ ...io, key, mutate });
       if (result === null) {
         send(res, 404, { error: 'no ride', leg, ride: key });
+        return;
+      }
+      if (tokenRejected) {
+        send(res, 401);
         return;
       }
       const s = store.summary(result.ride);

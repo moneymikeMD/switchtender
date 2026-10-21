@@ -21,19 +21,27 @@
 //     "gps_until": "<ISO UTC>",              ...until here
 //     "status": "launching" | "launched" | "launch_failed" | <Job values>,
 //     "launch": { "ok": bool, "operation": string|null, "error": string|null, "at": "<ISO UTC>" } | null,
+//     "cancel_token": "<base64url>",         lets a ntfy action button cancel without the shared key
 //     "fixes": [ { "at", "received_at", "lat", "lon", "accuracy_m", "speed_kmh", "speed_mps" } ],
 //     "cancel": null | { "reason": "off" | "not-riding", "at": "<ISO UTC>" },
-//     "lock": null | { ... },                Job-owned: how and which train was locked
-//     "alerts": [ ... ],                     Job-owned: one entry per alert sent
-//     "ended": null | { "reason", "at" }     Job-owned: how the ride finished
+//     "lock": null | { "method": "gps", "train_id", "at", "departed_at", "mean_distance_m" },
+//     "tracking": null | { "phase", "transfer_at", "candidates": [ids] },   Job-owned: where the ride is up to
+//     "alerts": [ { "key", "at", "station", "train_id", "circuit", "title", "text" } ],
+//     "statuses": [ { "key", "at", "text" } ],                                Job-owned: status pushes sent, one per key
+//     "ended": null | { "reason", "at" }
 //   }
 //
 // The endpoints (this module's callers) own key, leg, local_date, timezone,
-// fence_at, claimed_at, gps_from, gps_until, launch, fixes and cancel, and
-// write status only until the Job starts: "launching" at the claim, then
-// "launched" or "launch_failed". From its first write on, status, lock,
-// alerts and ended belong to the Job; the endpoints read them and never
-// write them. A start on a "launch_failed" ride re-claims it in place.
+// fence_at, claimed_at, gps_from, gps_until, cancel_token, launch, fixes and
+// cancel, and write status only until the Job starts: "launching" at the
+// claim, then "launched" or "launch_failed". From its first write on, status,
+// lock, tracking, alerts, statuses and ended belong to the Job (CMB-152);
+// the endpoints read them and never write them. A start on a "launch_failed"
+// ride, or on a "launching" one older than STALE_LAUNCH_MS, re-claims it in
+// place. The cancel token never appears in an endpoint response: ntfy stores
+// action URLs in the message, so it is scoped to one ride and nothing else.
+
+import { randomBytes } from 'node:crypto';
 
 const STORAGE = 'https://storage.googleapis.com/storage/v1';
 const UPLOAD = 'https://storage.googleapis.com/upload/storage/v1';
@@ -41,6 +49,8 @@ const UPLOAD = 'https://storage.googleapis.com/upload/storage/v1';
 export const RIDE_VERSION = 1;
 export const CANCEL_REASONS = Object.freeze(['off', 'not-riding']);
 export const UPDATE_ATTEMPTS = 3;
+export const STALE_LAUNCH_MS = 2 * 60 * 1000;
+const CANCEL_TOKEN_BYTES = 24;
 
 export class RideStoreError extends Error {
   constructor(message, status = 0) {
@@ -94,12 +104,15 @@ export function newRide({ key, leg, localDate, timeZone, fenceAt, now, gpsFrom, 
     claimed_at: now.toISOString(),
     gps_from: gpsFrom.toISOString(),
     gps_until: gpsUntil.toISOString(),
+    cancel_token: randomBytes(CANCEL_TOKEN_BYTES).toString('base64url'),
     status: 'launching',
     launch: null,
     fixes: [],
     cancel: null,
     lock: null,
+    tracking: null,
     alerts: [],
+    statuses: [],
     ended: null,
   };
 }
@@ -167,7 +180,15 @@ export function withLaunch(ride, { ok, operation = null, error = null, now }) {
   return { ...ride, status: ok ? 'launched' : 'launch_failed', launch: { ok, operation, error, at: now.toISOString() } };
 }
 
-/** Re-claim a ride whose launch failed: a fresh claim time, status back to launching. */
+/** True when a start may take the ride over: the launch failed, or it never reported back within STALE_LAUNCH_MS. */
+export function launchStale(ride, now) {
+  if (ride.status === 'launch_failed') return true;
+  if (ride.status !== 'launching') return false;
+  const claimed = Date.parse(ride.claimed_at);
+  return !Number.isFinite(claimed) || now.getTime() - claimed > STALE_LAUNCH_MS;
+}
+
+/** Re-claim a ride whose launch failed or stalled: a fresh claim time, status back to launching. */
 export function relaunched(ride, { now, gpsFrom, gpsUntil, fenceAt }) {
   return {
     ...ride,
@@ -200,7 +221,37 @@ export function withCancel(ride, { reason, now }) {
   return { ...ride, cancel: { reason, at: now.toISOString() } };
 }
 
-/** What the phone needs to know about a ride: is it locked, cancelled or over. */
+const has = (list, key) => Array.isArray(list) && list.some((e) => e?.key === key);
+
+/** Job: record the locked train. */
+export function withLock(ride, { trainId, now, departedAt = null, meanDistanceM = null }) {
+  return { ...ride, lock: { method: 'gps', train_id: trainId, at: now.toISOString(), departed_at: departedAt, mean_distance_m: meanDistanceM } };
+}
+
+/** Job: where the ride is up to, so a restarted Job resumes instead of starting over. */
+export function withTracking(ride, tracking) {
+  return { ...ride, tracking: { ...(ride.tracking ?? {}), ...tracking } };
+}
+
+/** Job: record an alert before it is sent. Null when `key` is already there, so an alert is recorded at most once. */
+export function withAlert(ride, { key, now, station, trainId, circuit = null, title, text }) {
+  if (has(ride.alerts, key)) return null;
+  return { ...ride, alerts: [...(ride.alerts ?? []), { key, at: now.toISOString(), station, train_id: trainId, circuit, title, text }] };
+}
+
+/** Job: record a status push before it is sent. Null when `key` was pushed already. */
+export function withStatus(ride, { key, now, text }) {
+  if (has(ride.statuses, key)) return null;
+  return { ...ride, statuses: [...(ride.statuses ?? []), { key, at: now.toISOString(), text }] };
+}
+
+/** Job: the ride is over. A second end keeps the first. */
+export function withEnded(ride, { reason, now }) {
+  if (ride.ended) return ride;
+  return { ...ride, status: 'ended', ended: { reason, at: now.toISOString() } };
+}
+
+/** What the phone needs to know about a ride: is it locked, cancelled or over. Never the cancel token. */
 export function summary(ride) {
   const locked = ride.lock !== null && ride.lock !== undefined;
   const cancelled = Boolean(ride.cancel);

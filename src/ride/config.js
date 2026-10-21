@@ -1,6 +1,13 @@
 // The [ride] block (CMB-151): when a Metro ride may start, where the phone's
 // GPS fixes are wanted, and which legs the ride tracker follows.
 //
+// A leg names its stations twice: `board` and `alight` are what the owner
+// calls them and go into the alert text; `board_code` and `alight_code` are
+// WMATA station codes (A15, F03) the tracker (CMB-152) matches against the
+// TrainPositions feed, with `alert_code` overriding the station it alerts
+// at (default: the one before `alight` along the track). The codes are
+// optional here and required by the Job, which is WMATA-only.
+//
 // Pure: parses the block out of the raw TOML, judges a fence time against a
 // leg's window in the route's zone, and computes the GPS window the phone is
 // told to send fixes over. No network, no clock of its own.
@@ -43,6 +50,16 @@ function nonNegative(value, path, fallback) {
   return value;
 }
 
+const STATION_CODE = /^[A-Z]\d{2}$/;
+
+function stationCode(raw, path) {
+  if (raw === undefined) return null;
+  if (typeof raw !== 'string' || !STATION_CODE.test(raw.trim().toUpperCase())) {
+    throw new ConfigError(`config: key "${path}" should be a WMATA station code like "A15", got ${JSON.stringify(raw)}`);
+  }
+  return raw.trim().toUpperCase();
+}
+
 function legEntry(raw, path) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new ConfigError(`config: ${path} should be a table`);
@@ -60,7 +77,14 @@ function legEntry(raw, path) {
   if (!line) {
     throw new ConfigError(`config: ${path}.line ${JSON.stringify(raw.line)} is not a known line; use one of ${LINES.join(', ')}`);
   }
-  return { line, board: raw.board.trim(), alight: raw.alight.trim() };
+  return {
+    line,
+    board: raw.board.trim(),
+    alight: raw.alight.trim(),
+    board_code: stationCode(raw.board_code, `${path}.board_code`),
+    alight_code: stationCode(raw.alight_code, `${path}.alight_code`),
+    alert_code: stationCode(raw.alert_code, `${path}.alert_code`),
+  };
 }
 
 function legBlock(raw, leg) {
