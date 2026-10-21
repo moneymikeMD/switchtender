@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/moneymikeMD/switchtender/compare/v1.7.0...v1.8.0) (2026-10-21)
+
+
+### Features
+
+* deploy the ride tracker Job with its bucket, topic and grants (CMB-153) ([#63](https://github.com/moneymikeMD/switchtender/issues/63)) ([e22100b](https://github.com/moneymikeMD/switchtender/commit/e22100b3788d3cbacf7e2004162f59890dad94d4))
+
 ## [1.7.0](https://github.com/moneymikeMD/switchtender/compare/v1.6.0...v1.7.0) (2026-10-21)
 
 
