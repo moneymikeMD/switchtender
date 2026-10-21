@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Deploy switchtender to Cloud Run (CMB-12).
+# Deploy switchtender to Cloud Run (CMB-12) and its ride tracker Job (CMB-153).
 #
 # Idempotent. Enables the APIs, creates any Secret Manager secret that does
 # not exist yet (values read from 1Password through the op CLI and piped on
 # stdin, never passed as arguments), grants the runtime service account read
-# access, and deploys from source. Re-running deploys the current tree and
-# leaves existing secret versions alone unless a flag says otherwise.
+# access, creates the ride bucket, deploys the service from source, then
+# deploys the Job from the service's image digest. Re-running deploys the
+# current tree and leaves existing secret versions alone unless a flag says
+# otherwise.
 #
 #   scripts/deploy-cloud-run.sh                  deploy
 #   scripts/deploy-cloud-run.sh --update-config  also push ./config.toml as a new version
@@ -29,6 +31,9 @@ CONFIG_FILE="${SWITCHTENDER_CONFIG:-./config.toml}"
 OP_VAULT="Software_Development"
 OP_SHARED_ITEM="Switchtender shared secret"
 OP_NTFY_ITEM="Switchtender ntfy topic"
+OP_RIDE_NTFY_ITEM="Switchtender ride ntfy topic"
+RIDE_JOB="switchtender-ride"
+RIDE_BUCKET="${PROJECT}-rides"
 SCHEDULER_JOB="switchtender-verdict-check"
 SAMPLE_JOB="switchtender-verdict-sample"
 EVENING_SAMPLE_JOB="switchtender-verdict-sample-evening"
@@ -62,6 +67,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
   cloudscheduler.googleapis.com \
+  storage.googleapis.com \
   --quiet
 
 secret_exists() { gcloud secrets describe "$1" --quiet >/dev/null 2>&1; }
@@ -152,19 +158,23 @@ fi
 # the literal word "switchtender". Same mint-if-missing pattern as the
 # shared secret, its own 1Password item so it is never confused with (or
 # rotated alongside) the phone's auth key.
-ntfy_path="op://${OP_VAULT}/${OP_NTFY_ITEM}/credential"
 mint_ntfy_topic() {
-  local value
+  local item="$1" value
   value="$(openssl rand -hex 20)"
-  log "creating 1Password item ${OP_NTFY_ITEM}"
+  log "creating 1Password item ${item}"
   printf '{"title":"%s","category":"API_CREDENTIAL","vault":{"name":"%s"},"fields":[{"id":"credential","type":"CONCEALED","label":"credential","value":"%s"}]}' \
-    "$OP_NTFY_ITEM" "$OP_VAULT" "$value" \
+    "$item" "$OP_VAULT" "$value" \
     | op item create - >/dev/null
 }
-if ! op read "$ntfy_path" >/dev/null 2>&1; then
-  mint_ntfy_topic
-fi
-op_value "$ntfy_path" | create_secret_from_stdin switchtender-ntfy-topic
+ntfy_topic_secret() {
+  local item="$1" secret="$2" path="op://${OP_VAULT}/${1}/credential"
+  op read "$path" >/dev/null 2>&1 || mint_ntfy_topic "$item"
+  op_value "$path" | create_secret_from_stdin "$secret"
+}
+ntfy_topic_secret "$OP_NTFY_ITEM" switchtender-ntfy-topic
+# The ride tracker's pushes vibrate until dismissed, so they get their own
+# topic: the 7:30 verdict must never ring that way (CMB-153).
+ntfy_topic_secret "$OP_RIDE_NTFY_ITEM" switchtender-ride-ntfy-topic
 
 # The commute description. Gitignored, never in the image; mounted as a file.
 if [ "$update_config" = 1 ]; then
@@ -176,7 +186,8 @@ fi
 log "granting ${RUNTIME_SA} read access to each secret"
 for name in switchtender-routes-api-key switchtender-traffic-api-key \
   switchtender-transit-api-key switchtender-events-api-key \
-  switchtender-shared-secret switchtender-ntfy-topic switchtender-config; do
+  switchtender-shared-secret switchtender-ntfy-topic switchtender-ride-ntfy-topic \
+  switchtender-config; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member "serviceAccount:${RUNTIME_SA}" \
     --role roles/secretmanager.secretAccessor \
@@ -196,6 +207,28 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
   --condition None \
   --quiet >/dev/null
 
+# Ride objects (CMB-151): one small JSON per ride, deleted after 30 days.
+# Bucket-level grant only; the runtime service account holds no project roles.
+if gcloud storage buckets describe "gs://${RIDE_BUCKET}" --quiet >/dev/null 2>&1; then
+  log "bucket ${RIDE_BUCKET} exists"
+else
+  log "creating bucket ${RIDE_BUCKET}"
+  gcloud storage buckets create "gs://${RIDE_BUCKET}" \
+    --location "$REGION" \
+    --uniform-bucket-level-access \
+    --public-access-prevention \
+    --quiet
+fi
+lifecycle="$(mktemp)"
+trap 'rm -f "$lifecycle"' EXIT
+printf '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' >"$lifecycle"
+gcloud storage buckets update "gs://${RIDE_BUCKET}" --lifecycle-file "$lifecycle" --quiet >/dev/null
+log "granting ${RUNTIME_SA} object read/write on ${RIDE_BUCKET}"
+gcloud storage buckets add-iam-policy-binding "gs://${RIDE_BUCKET}" \
+  --member "serviceAccount:${RUNTIME_SA}" \
+  --role roles/storage.objectAdmin \
+  --quiet >/dev/null
+
 log "deploying ${SERVICE} to ${REGION}"
 # --set-secrets covers both kinds: KEY=secret:version becomes an environment
 # variable, /path=secret:version becomes a file mount. One flag replaces the
@@ -209,13 +242,48 @@ gcloud run deploy "$SERVICE" \
   --max-instances 1 \
   --memory 256Mi \
   --timeout 30 \
-  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production" \
+  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_JOB_PROJECT=${PROJECT}" \
   --set-secrets "/config/config.toml=switchtender-config:latest,ROUTES_API_KEY=switchtender-routes-api-key:latest,TRAFFIC_API_KEY=switchtender-traffic-api-key:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,EVENTS_API_KEY=switchtender-events-api-key:latest,SWITCHTENDER_SHARED_SECRET=switchtender-shared-secret:latest,NTFY_TOPIC=switchtender-ntfy-topic:latest" \
   --quiet
 
 url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 log "deployed: ${url}"
 log "check: curl -s -o /dev/null -w '%{http_code}\n' ${url}/health"
+
+# The ride tracker (CMB-152) runs the service's own image, pinned by digest so
+# a ride never starts on code the service was not deployed with. /ride/start
+# sets RIDE_KEY per execution. MAX_RIDE_MS in src/ride/job.js is 2 h; the
+# extra 15 min lets a timed-out ride still write its row. Retries stay at 0:
+# a retried task would re-run a ride whose alerts may already have gone out.
+image="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(spec.template.spec.containers[0].image)')"
+case "$image" in
+  *@sha256:*) ;;
+  *) die "service image is not pinned by digest: ${image}" ;;
+esac
+log "deploying job ${RIDE_JOB} from ${image##*@}"
+gcloud run jobs deploy "$RIDE_JOB" \
+  --image "$image" \
+  --region "$REGION" \
+  --service-account "$RUNTIME_SA" \
+  --command node \
+  --args src/ride/job.js \
+  --tasks 1 \
+  --max-retries 0 \
+  --task-timeout 8100s \
+  --cpu 1 \
+  --memory 512Mi \
+  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_SERVICE_URL=${url}" \
+  --set-secrets "/config/config.toml=switchtender-config:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,RIDE_NTFY_TOPIC=switchtender-ride-ntfy-topic:latest" \
+  --quiet
+
+# Starting an execution with env overrides needs run.jobs.runWithOverrides,
+# granted on this one Job rather than the project.
+log "granting ${RUNTIME_SA} run.developer on job ${RIDE_JOB}"
+gcloud run jobs add-iam-policy-binding "$RIDE_JOB" \
+  --region "$REGION" \
+  --member "serviceAccount:${RUNTIME_SA}" \
+  --role roles/run.developer \
+  --quiet >/dev/null
 
 # Cloud Scheduler has no way to read a header value out of Secret Manager for
 # an HTTP target, so the shared secret is written into each job definition

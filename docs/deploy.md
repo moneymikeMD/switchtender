@@ -31,6 +31,7 @@ Secrets and where they land in the container:
 | `switchtender-events-api-key` | `EVENTS_API_KEY` |
 | `switchtender-shared-secret` | `SWITCHTENDER_SHARED_SECRET` |
 | `switchtender-ntfy-topic` | `NTFY_TOPIC` |
+| `switchtender-ride-ntfy-topic` | `RIDE_NTFY_TOPIC`, on the ride Job only |
 
 The image (`Dockerfile`) holds `src/` and the Boston example config only. `.dockerignore` and `.gcloudignore` keep `config.toml` and `.env` out of both the build context and the source upload.
 
@@ -124,6 +125,31 @@ when studying how the road behaves across the morning.
 Cost: about 55 extra verdicts a week, which keeps Routes inside its free calls (`docs/cost-routes.md`).
 
 Run one by hand with `gcloud scheduler jobs run switchtender-verdict-sample --location us-east4` (or `...-sample-evening`).
+
+## Ride tracker Job (CMB-153)
+
+`scripts/deploy-cloud-run.sh` also deploys the Cloud Run Job `switchtender-ride` in `us-east4`, which follows the owner's train and pushes the transfer and exit alerts (CMB-152). `POST /ride/start`
+starts one execution per ride through the Run Admin API with `RIDE_KEY` and `RIDE_BUCKET` set; nothing else runs it, and no Cloud Scheduler job is involved.
+
+- **Image.** The service's own image, by digest, read back from the service after its deploy. The script refuses to deploy the Job if that image is not pinned by digest.
+- **Command.** `node src/ride/job.js`, one task, `--max-retries 0` (a retry would re-run a ride whose alerts may already have gone out), `--task-timeout 8100s` (the Job's own two-hour cap plus 15
+  minutes to write the row), 1 CPU, 512 MiB.
+- **Environment.** `SWITCHTENDER_CONFIG`, `RIDE_BUCKET`, `RIDE_SERVICE_URL` (the service URL, for the alert's cancel buttons), and the secrets `TRANSIT_API_KEY`, `RIDE_NTFY_TOPIC` and the mounted
+  config. The Job never sees the shared secret: each ride's cancel buttons carry a per-ride token instead.
+- **Ride topic.** `RIDE_NTFY_TOPIC` is a second `openssl rand -hex 20` slug, 1Password item `Switchtender ride ntfy topic` in `Software_Development`, field `credential`, minted on the first run. It is
+  separate from `NTFY_TOPIC` because ride alerts vibrate until dismissed and the 7:30 verdict must not. Subscribe to it in the ntfy app, alongside the verdict topic.
+- **Bucket.** `commuter-bot-501717-rides`, `us-east4`, uniform access, public access prevented, objects deleted after 30 days. The service gets `RIDE_BUCKET` and `RIDE_JOB_PROJECT`.
+- **IAM.** The runtime service account gets `roles/storage.objectAdmin` on the bucket and `roles/run.developer` on the Job (starting an execution with env overrides needs
+  `run.jobs.runWithOverrides`). Both grants are on the resource; the account still holds no project roles.
+
+The Job reads `[ride]` from the same config secret as the service, so a leg change is `scripts/deploy-cloud-run.sh --update-config` like any other config change.
+
+Logs of the latest rides:
+
+```
+gcloud run jobs executions list --job switchtender-ride --region us-east4 --limit 5
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="switchtender-ride"' --limit 50 --format 'value(textPayload)'
+```
 
 ## Logs
 
