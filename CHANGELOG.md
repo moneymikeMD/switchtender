@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/moneymikeMD/switchtender/compare/v1.6.0...v1.7.0) (2026-10-21)
+
+
+### Features
+
+* run a morning ride end to end in a Cloud Run Job (CMB-152) ([#61](https://github.com/moneymikeMD/switchtender/issues/61)) ([3939fd5](https://github.com/moneymikeMD/switchtender/commit/3939fd51be39a668dae51033ce43617c36e7a609))
+
 ## [1.6.0](https://github.com/moneymikeMD/switchtender/compare/v1.5.0...v1.6.0) (2026-10-21)
 
 
