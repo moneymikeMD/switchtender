@@ -39,7 +39,7 @@ The image (`Dockerfile`) holds `src/` and the Boston example config only. `.dock
 ### ntfy relay (CMB-160)
 
 ntfy.sh rate-limits anonymous publishers per IP and Cloud Run egress IPs are shared, so pushes from Cloud Run were refused with HTTP 429. The deploy script sets `NTFY_BASE_URL=https://push.longb.org` on the service and the
-ride Job, and mounts `NTFY_RELAY_KEY` from `switchtender-ntfy-relay-key` (1Password item `ntfy relay`, vault `Lab`, field `relay key`); the code sends it as `X-Relay-Key`. The relay (LAB-687) publishes to ntfy.sh from the
+ride Job, and mounts `NTFY_RELAY_KEY` from `switchtender-ntfy-relay-key` (1Password item `ntfy relay`, vault `Lab`, field `relay_key`); the code sends it as `X-Relay-Key`. The relay (LAB-687) publishes to ntfy.sh from the
 home IP, so the phone still receives over FCM. With both variables unset the code posts to `https://ntfy.sh` with no extra header. A refused push logs `ntfy <status> <ntfy code> retry-after <s>`, never the topic: ntfy's
 `42901` is the request bucket and `42908` the daily quota. A 429 with `Retry-After` of 10 s or less is retried once.
 
