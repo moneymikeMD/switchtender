@@ -464,7 +464,9 @@ export function createServer({
         }
         return store.withCancel(r, { reason, now: received });
       };
-      const mutate = action === 'fix' ? (r) => (store.summary(r).done ? null : store.withFix(r, fix)) : cancel;
+      // The evening Job opens its own GPS window (CMB-161); once it closes, the phone is told it is done.
+      const windowClosed = (r) => received.getTime() > Date.parse(r.tracking?.gps_until ?? '');
+      const mutate = action === 'fix' ? (r) => (store.summary(r).done || windowClosed(r) ? null : store.withFix(r, fix)) : cancel;
       const result = await store.updateRide({ ...io, key, mutate });
       if (result === null) {
         send(res, 404, { error: 'no ride', leg, ride: key });
@@ -475,7 +477,7 @@ export function createServer({
         return;
       }
       const s = store.summary(result.ride);
-      if (action === 'fix') send(res, 200, { recorded: result.updated, leg, ride: key, ...s });
+      if (action === 'fix') send(res, 200, { recorded: result.updated, leg, ride: key, ...s, done: s.done || windowClosed(result.ride) });
       else send(res, 200, { cancelled: true, reason: result.ride.cancel?.reason ?? reason, leg, ride: key, ...s });
     } catch (error) {
       if (error instanceof RideStoreError || error?.name === 'TimeoutError' || error?.name === 'AbortError') {

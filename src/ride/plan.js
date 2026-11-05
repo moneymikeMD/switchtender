@@ -1,8 +1,7 @@
 // The plan for one ride leg (CMB-152): which WMATA line and stations a
 // configured [[ride.<leg>.legs]] entry means, which station to alert at, and
 // the words the alerts and status pushes use. Pure: config and the circuit
-// index in, a plan out. The morning plan is the only one built today; the
-// evening leg (`pm`) is held back until the underground-GPS redesign.
+// index in, a plan out.
 
 import { ConfigError } from '../config.js';
 
@@ -47,12 +46,20 @@ export function planLeg(leg, index, path) {
     if (alightAt < 2) throw new ConfigError(`config: ${path}: ${leg.board_code} and ${leg.alight_code} are adjacent; no station to alert at`);
     alert = ordered[alightAt - 1].code;
   }
+  const gpsAfter = leg.gps_after_code ?? null;
+  if (gpsAfter) {
+    const at = ordered.findIndex((s) => s.code === gpsAfter);
+    const alertAt = ordered.findIndex((s) => s.code === alert);
+    if (at < 0 || at >= alertAt)
+      throw new ConfigError(`config: ${path}.gps_after_code ${gpsAfter} is not between ${leg.board_code} and the alert station ${alert}`);
+  }
   return {
     line,
     lineName: leg.line,
     board: leg.board_code,
     alight: leg.alight_code,
     alert,
+    gpsAfter,
     boardName: leg.board,
     alightName: leg.alight,
     dir,
@@ -69,6 +76,10 @@ export function buildPlan({ leg, legs, index, timeZone = 'UTC' }) {
   if (!Array.isArray(legs) || legs.length === 0) throw new ConfigError(`config: ride.${leg}.legs is empty; the tracker has nothing to follow`);
   if (legs.length > MAX_LEGS) throw new ConfigError(`config: ride.${leg}.legs has ${legs.length} legs; the tracker follows at most ${MAX_LEGS}`);
   const planned = legs.map((l, i) => ({ n: i, ...planLeg(l, index, `ride.${leg}.legs[${i}]`) }));
+  planned.forEach((l, i) => {
+    if (l.gpsAfter && !(leg === 'pm' && i === 1))
+      throw new ConfigError(`config: ride.${leg}.legs[${i}].gps_after_code is read only on the second evening leg (ride.pm.legs[1])`);
+  });
   return { leg, timeZone, legs: planned };
 }
 
@@ -79,25 +90,28 @@ export function clockAt(ms, timeZone) {
   return `${get('hour')}:${get('minute')}`;
 }
 
-/** The words for a leg's alert, naming the train's departure for every leg after the first. */
+/** The words for a leg's alert, naming the train's departure when one is given (every candidate leg). */
 export function alertText(plan, n, departedAtMs = null) {
   const leg = plan.legs[n];
   const next = plan.legs[n + 1];
   let text = `Next stop ${leg.alightName}.`;
   if (next) text += ` Transfer to ${next.lineName}.`;
-  if (n > 0 && Number.isFinite(departedAtMs)) text += ` You're on the ${clockAt(departedAtMs, plan.timeZone)} from ${leg.boardName}.`;
+  if (Number.isFinite(departedAtMs)) text += ` You're on the ${clockAt(departedAtMs, plan.timeZone)} from ${leg.boardName}.`;
   return text;
 }
 
-/** The quiet status once the first leg's train is locked. */
-export function lockText(plan, departedAtMs) {
-  const leg = plan.legs[0];
+/** The quiet status once leg `n`'s train is locked. */
+export function lockText(plan, departedAtMs, n = 0) {
+  const leg = plan.legs[n];
   return Number.isFinite(departedAtMs)
     ? `Tracking the ${clockAt(departedAtMs, plan.timeZone)} from ${leg.boardName}`
     : `Tracking a train from ${leg.boardName}`;
 }
 
 export const NOT_TRACKING = 'Not tracking. Watch the stops.';
+
+/** The quiet status that starts the phone's evening fix loop (CMB-161); the macro matches this text. */
+export const GPS_TEXT = 'Sending GPS fixes to find your train.';
 
 /** Is `train` (a tracker record) heading the way this leg goes? Unknown travel is not a yes. */
 export function boundRight(train, leg) {

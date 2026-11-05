@@ -1,7 +1,9 @@
 // The ride tracker, a Cloud Run Job entry point (CMB-152). One execution per
 // ride, started by /ride/start with RIDE_KEY naming the ride object. It polls
-// WMATA TrainPositions, locks the first leg's train from the phone's GPS
-// fixes, follows it, and pushes each alert to the phone before the station.
+// WMATA TrainPositions, follows the owner's train, and pushes each alert to
+// the phone before the station. The morning locks its first leg's train from
+// GPS fixes; the evening (CMB-161) alerts candidate trains and narrows its
+// second leg by GPS once that leg runs above ground.
 //
 // Run contract:
 //   node src/ride/job.js
@@ -9,14 +11,10 @@
 //   SWITCHTENDER_CONFIG (default config.toml) for [ride] legs, route.timezone and [log];
 //   SHEETS_ACCESS_TOKEN for a laptop run, else the metadata server's token.
 //   Exit 0: the ride ended and its row was written (reason in the object: done,
-//   cancelled, no-lock, lost, timeout, pm-not-built). Exit 1: the ride could
+//   cancelled, no-lock, lost, timeout). Exit 1: the ride could
 //   not run (crash, feed bootstrap, bad leg config), after a loud status push
 //   and a best-effort `ended`. Exit 2: the environment is incomplete; nothing
 //   was touched.
-//
-// Only the morning leg is built. A `pm` ride ends at once with reason
-// pm-not-built: the evening start needs an underground-GPS gate the phone
-// spike (CMB-149) showed does not exist yet.
 //
 // Everything with a clock, a sleep, a socket or a store is injected into
 // runRide, so a test runs a whole ride in milliseconds against synthetic
@@ -30,7 +28,8 @@ import { tokenFromEnvOrMetadata } from '../log.js';
 import * as rideState from './state.js';
 import { logRide } from './log.js';
 import { buildCircuitIndex, buildStationIndex, emptyState, observe, candidates, lockFromFixes } from './track.js';
-import { buildPlan, alertText, lockText, boundRight, nearAlert, NOT_TRACKING, CANDIDATES_PER_LEG, TRANSFER_GAP_MS } from './plan.js';
+import { buildPlan, alertText, lockText, boundRight, nearAlert, NOT_TRACKING, GPS_TEXT, CANDIDATES_PER_LEG, TRANSFER_GAP_MS } from './plan.js';
+import { RIDE_DEFAULTS } from './config.js';
 import { pushRide, cancelActions } from './notify.js';
 
 const WMATA = 'https://api.wmata.com';
@@ -149,7 +148,6 @@ export async function runRide({
     return { reason, exitCode };
   };
 
-  if (ride.leg !== 'am') return finish('pm-not-built');
   if (ride.cancel) return finish('cancelled');
 
   const timeZone = ride.timezone ?? config?.route?.timezone ?? 'UTC';
@@ -175,7 +173,6 @@ export async function runRide({
     return finish('config', { loud: true, exitCode: 1 });
   }
 
-  const legKeys = plan.legs.flatMap((leg) => (leg.n === 0 ? ['leg0'] : Array.from({ length: CANDIDATES_PER_LEG }, (_, i) => `leg1:${i}`)));
   const sent = new Set((ride.alerts ?? []).map((a) => a.key));
   let lastAlertAt = (ride.alerts ?? []).reduce((max, a) => Math.max(max, Date.parse(a.at) || 0), 0) || null;
   const alert = async (alertKey, { kind, text, station, trainId, circuit }) => {
@@ -190,16 +187,28 @@ export async function runRide({
     return true;
   };
 
-  let phase = ride.tracking?.phase ?? 'lock';
-  let lockedId = ride.lock?.train_id ?? null;
-  let transferAt = ride.tracking?.transfer_at ? Date.parse(ride.tracking.transfer_at) : null;
-  let green = [...(ride.tracking?.candidates ?? [])];
-  const lostSlots = new Set();
   let state = emptyState();
+  const ctx = {
+    plan,
+    index,
+    stations,
+    sent,
+    alert,
+    status,
+    update,
+    finish,
+    logger,
+    now,
+    lockGraceMs,
+    ride: () => ride,
+    state: () => state,
+    store,
+    gpsWindowMs: (config?.ride?.[ride.leg]?.gps_window_mins ?? RIDE_DEFAULTS[ride.leg].gps_window_mins) * 60_000,
+  };
+  const step = ride.leg === 'am' ? morning(ctx) : evening(ctx);
+
   let feedFailures = 0;
   const startedAt = t();
-  const gpsFrom = Date.parse(ride.gps_from);
-  const gpsUntil = Date.parse(ride.gps_until);
   if (ride.status !== 'tracking') await update((r) => ({ ...r, status: 'tracking' }));
 
   for (;;) {
@@ -226,14 +235,39 @@ export async function runRide({
       if (feedFailures === FEED_FAILURES_BEFORE_PUSH) await status('feed', NOT_TRACKING);
     }
 
-    if (phase === 'lock' && polled) {
+    if (polled) {
+      const ended = await step.poll(events, nowMs);
+      if (ended) return ended;
+    }
+
+    if (step.settled() && lastAlertAt !== null && nowMs >= lastAlertAt + endAfterMs) return finish('done');
+
+    const fast = step.watching().some(([id, leg]) => nearAlert(index, state.trains[id], leg));
+    await sleep(fast ? fastPollMs : pollMs);
+  }
+}
+
+function morning({ plan, index, stations, sent, alert, status, update, finish, logger, now, lockGraceMs, ride, state, store }) {
+  const legKeys = plan.legs.flatMap((leg) => (leg.n === 0 ? ['leg0'] : Array.from({ length: CANDIDATES_PER_LEG }, (_, i) => `leg1:${i}`)));
+  const start = ride();
+  let phase = start.tracking?.phase ?? 'lock';
+  let lockedId = start.lock?.train_id ?? null;
+  let transferAt = start.tracking?.transfer_at ? Date.parse(start.tracking.transfer_at) : null;
+  let green = [...(start.tracking?.candidates ?? [])];
+  const lostSlots = new Set();
+  const gpsFrom = Date.parse(start.gps_from);
+  const gpsUntil = Date.parse(start.gps_until);
+
+  async function poll(events, nowMs) {
+    const s = state();
+    if (phase === 'lock') {
       const leg = plan.legs[0];
-      const ids = candidates(state, { station: leg.board, after: gpsFrom, line: leg.line }).filter((id) => boundRight(state.trains[id], leg));
+      const ids = candidates(s, { station: leg.board, after: gpsFrom, line: leg.line }).filter((id) => boundRight(s.trains[id], leg));
       const lock =
-        ids.length > 0 ? lockFromFixes(state, (ride.fixes ?? []).map(toFix), index, stations, ids) : { trainId: null, reason: 'no lock: no candidates yet' };
+        ids.length > 0 ? lockFromFixes(s, (ride().fixes ?? []).map(toFix), index, stations, ids) : { trainId: null, reason: 'no lock: no candidates yet' };
       if (lock.trainId) {
         lockedId = lock.trainId;
-        const departedAt = state.trains[lockedId].departures[leg.board];
+        const departedAt = s.trains[lockedId].departures[leg.board];
         await update((r) =>
           store.withTracking(store.withLock(r, { trainId: lockedId, now: now(), departedAt: iso(departedAt), meanDistanceM: lock.meanDistanceM }), {
             phase: 'leg0',
@@ -250,19 +284,13 @@ export async function runRide({
       }
     }
 
-    if (phase === 'leg0' && polled) {
+    if (phase === 'leg0') {
       const leg = plan.legs[0];
       const mine = events.filter((e) => e.trainId === lockedId);
       if (mine.some((e) => e.type === 'lost')) return finish('lost', { loud: true });
       for (const e of mine.filter((e) => e.type === 'arrival')) {
         if (e.station === leg.alert) {
-          await alert('leg0', {
-            kind: 'alert',
-            text: alertText(plan, 0),
-            station: e.station,
-            trainId: lockedId,
-            circuit: state.trains[lockedId]?.circuit ?? null,
-          });
+          await alert('leg0', { kind: 'alert', text: alertText(plan, 0), station: e.station, trainId: lockedId, circuit: s.trains[lockedId]?.circuit ?? null });
         }
         if (e.station === leg.alight) {
           transferAt = e.at;
@@ -274,11 +302,11 @@ export async function runRide({
       }
     }
 
-    if (phase === 'leg1' && polled) {
+    if (phase === 'leg1') {
       const leg = plan.legs[1];
       if (green.length < CANDIDATES_PER_LEG) {
-        const fresh = candidates(state, { station: leg.board, after: transferAt + TRANSFER_GAP_MS, line: leg.line }).filter(
-          (id) => boundRight(state.trains[id], leg) && !green.includes(id),
+        const fresh = candidates(s, { station: leg.board, after: transferAt + TRANSFER_GAP_MS, line: leg.line }).filter(
+          (id) => boundRight(s.trains[id], leg) && !green.includes(id),
         );
         if (fresh.length > 0) {
           green = [...green, ...fresh].slice(0, CANDIDATES_PER_LEG);
@@ -294,27 +322,170 @@ export async function runRide({
           logger(`ride candidate ${e.trainId} lost (${e.reason})`);
         }
         if (e.type === 'arrival' && e.station === leg.alert) {
-          const departedAt = state.trains[e.trainId]?.departures?.[leg.board] ?? null;
+          const departedAt = s.trains[e.trainId]?.departures?.[leg.board] ?? null;
           await alert(`leg1:${slot}`, {
             kind: slot === 0 ? 'alert' : 'once',
             text: alertText(plan, 1, departedAt),
             station: e.station,
             trainId: e.trainId,
-            circuit: state.trains[e.trainId]?.circuit ?? null,
+            circuit: s.trains[e.trainId]?.circuit ?? null,
           });
         }
       }
       const slots = green.map((_, i) => `leg1:${i}`);
       if (slots.length === CANDIDATES_PER_LEG && slots.every((k) => lostSlots.has(k) && !sent.has(k))) return finish('lost', { loud: true });
     }
-
-    const settled = legKeys.every((k) => sent.has(k) || lostSlots.has(k));
-    if (settled && lastAlertAt !== null && nowMs >= lastAlertAt + endAfterMs) return finish('done');
-
-    const watching = phase === 'leg0' ? [[lockedId, plan.legs[0]]] : phase === 'leg1' ? green.map((id) => [id, plan.legs[1]]) : [];
-    const fast = watching.some(([id, leg]) => nearAlert(index, state.trains[id], leg));
-    await sleep(fast ? fastPollMs : pollMs);
+    return null;
   }
+
+  return {
+    poll,
+    settled: () => legKeys.every((k) => sent.has(k) || lostSlots.has(k)),
+    watching: () => (phase === 'leg0' ? [[lockedId, plan.legs[0]]] : phase === 'leg1' ? green.map((id) => [id, plan.legs[1]]) : []),
+  };
+}
+
+// No GPS lock on the first leg: it is underground end to end (CMB-149), so its candidates alert by name.
+function evening({ plan, index, stations, sent, alert, status, update, finish, logger, now, lockGraceMs, ride, state, store, gpsWindowMs }) {
+  const [first, second] = plan.legs;
+  const start = ride();
+  const tracking = start.tracking ?? {};
+  const fenceAt = Date.parse(start.fence_at);
+  let boarding = [...(tracking.boarding ?? [])];
+  let transfers = [...(tracking.transfers ?? [])];
+  let picks = (tracking.picks ?? []).map((p) => [...p]);
+  let later = [...(tracking.candidates ?? [])];
+  let lockedId = start.lock?.train_id ?? null;
+  let lockLost = false;
+  let gpsFrom = tracking.gps_from ? Date.parse(tracking.gps_from) : null;
+  let gpsUntil = tracking.gps_until ? Date.parse(tracking.gps_until) : null;
+  const lost = new Set();
+  const save = () => update((r) => store.withTracking(r, { phase: 'evening', boarding, transfers, picks, candidates: later }));
+  const departure = (id, leg) => state().trains[id]?.departures?.[leg.board] ?? null;
+  const narrowed = () => lockedId !== null && !lockLost;
+
+  async function poll(events, nowMs) {
+    const s = state();
+    let changed = false;
+    if (boarding.length < CANDIDATES_PER_LEG) {
+      const fresh = candidates(s, { station: first.board, after: fenceAt, line: first.line }).filter(
+        (id) => boundRight(s.trains[id], first) && !boarding.includes(id),
+      );
+      if (fresh.length > 0) {
+        boarding = [...boarding, ...fresh].slice(0, CANDIDATES_PER_LEG);
+        changed = true;
+        logger(`ride candidates for ${first.alightName}: ${boarding.join(', ')}`);
+      }
+    }
+    for (const e of events) {
+      const slot = boarding.indexOf(e.trainId);
+      if (slot < 0) continue;
+      if (e.type === 'lost') {
+        lost.add(e.trainId);
+        logger(`ride candidate ${e.trainId} lost (${e.reason})`);
+      }
+      if (e.type !== 'arrival') continue;
+      if (e.station === first.alert) {
+        await alert(`leg0:${slot}`, {
+          kind: slot === 0 ? 'alert' : 'once',
+          text: alertText(plan, 0, departure(e.trainId, first)),
+          station: e.station,
+          trainId: e.trainId,
+          circuit: s.trains[e.trainId]?.circuit ?? null,
+        });
+      }
+      if (second && e.station === first.alight && !transfers[slot]) {
+        transfers[slot] = iso(e.at);
+        changed = true;
+      }
+    }
+
+    if (second) {
+      boarding.forEach((_, i) => {
+        if (!transfers[i] || (picks[i]?.length ?? 0) >= CANDIDATES_PER_LEG) return;
+        const mine = picks[i] ?? [];
+        const fresh = candidates(s, { station: second.board, after: Date.parse(transfers[i]) + TRANSFER_GAP_MS, line: second.line }).filter(
+          (id) => boundRight(s.trains[id], second) && !mine.includes(id),
+        );
+        if (fresh.length === 0) return;
+        picks[i] = [...mine, ...fresh].slice(0, CANDIDATES_PER_LEG);
+        for (const id of picks[i]) if (!later.includes(id)) later.push(id);
+        changed = true;
+        logger(`ride candidates for ${second.alightName}: ${later.join(', ')}`);
+      });
+    }
+    if (changed) await save();
+
+    if (second) {
+      for (const e of events) {
+        const slot = later.indexOf(e.trainId);
+        if (slot < 0) continue;
+        if (e.type === 'lost') {
+          lost.add(e.trainId);
+          if (e.trainId === lockedId && !sent.has(`leg1:${slot}`)) {
+            lockLost = true;
+            logger(`ride locked train ${lockedId} lost before its alert; every candidate alerts again`);
+          }
+        }
+        if (e.type === 'departure' && e.station === second.gpsAfter && gpsFrom === null) {
+          gpsFrom = nowMs;
+          gpsUntil = nowMs + gpsWindowMs;
+          await update((r) => store.withTracking(r, { gps_from: iso(gpsFrom), gps_until: iso(gpsUntil) }));
+          await status('gps', GPS_TEXT, { quiet: true });
+        }
+        if (e.type === 'arrival' && e.station === second.alert) {
+          if (narrowed() && e.trainId !== lockedId) continue;
+          await alert(`leg1:${slot}`, {
+            kind: narrowed() || slot === 0 ? 'alert' : 'once',
+            text: alertText(plan, 1, departure(e.trainId, second)),
+            station: e.station,
+            trainId: e.trainId,
+            circuit: s.trains[e.trainId]?.circuit ?? null,
+          });
+        }
+      }
+
+      if (lockedId === null && gpsFrom !== null && nowMs <= gpsUntil + lockGraceMs) {
+        const ids = later.filter((id) => s.trains[id] && !lost.has(id));
+        const fixes = (ride().fixes ?? []).map(toFix).filter((f) => f.time >= gpsFrom);
+        const lock = ids.length > 0 ? lockFromFixes(s, fixes, index, stations, ids) : { trainId: null };
+        if (lock.trainId) {
+          lockedId = lock.trainId;
+          const departedAt = departure(lockedId, second);
+          await update((r) => store.withLock(r, { trainId: lockedId, now: now(), departedAt: iso(departedAt), meanDistanceM: lock.meanDistanceM }));
+          logger(`ride locked train ${lockedId} (${lock.meanDistanceM} m)`);
+          await status('lock', lockText(plan, departedAt, 1), { quiet: true });
+        }
+      }
+    }
+
+    const quiet = (keyOf, ids) => ids.length > 0 && ids.every((id, i) => lost.has(id) && !sent.has(keyOf(i)));
+    if (boarding.length === CANDIDATES_PER_LEG && quiet((i) => `leg0:${i}`, boarding)) return finish('lost', { loud: true });
+    if (second && picksComplete() && quiet((i) => `leg1:${i}`, later)) return finish('lost', { loud: true });
+    return null;
+  }
+
+  function picksComplete() {
+    return boarding.every((id, i) => (transfers[i] ? (picks[i]?.length ?? 0) >= CANDIDATES_PER_LEG : lost.has(id)));
+  }
+
+  function settled() {
+    if (boarding.length < CANDIDATES_PER_LEG) return false;
+    if (!boarding.every((id, i) => sent.has(`leg0:${i}`) || lost.has(id))) return false;
+    if (!second) return true;
+    if (!picksComplete()) return false;
+    if (narrowed()) return sent.has(`leg1:${later.indexOf(lockedId)}`) || lost.has(lockedId);
+    return later.every((id, i) => sent.has(`leg1:${i}`) || lost.has(id));
+  }
+
+  return {
+    poll,
+    settled,
+    watching: () => [
+      ...boarding.filter((id, i) => !sent.has(`leg0:${i}`)).map((id) => [id, first]),
+      ...(second ? (narrowed() ? [lockedId] : later).map((id) => [id, second]) : []),
+    ],
+  };
 }
 
 /** Best effort after a crash: a loud status and an `ended` record, so the phone and the row both say so. Never throws. */

@@ -15,10 +15,10 @@ test('the example [ride] block parses with both legs, windows, GPS windows and t
   assert.deepEqual(LEGS, ['am', 'pm']);
   assert.equal(ride.sheet_tab, 'rides');
   assert.deepEqual({ start: ride.am.start, end: ride.am.end, gps: ride.am.gps_window_mins }, { start: '05:30', end: '10:00', gps: 25 });
-  assert.deepEqual({ start: ride.pm.start, end: ride.pm.end, gps: ride.pm.gps_window_mins }, { start: '16:30', end: '22:30', gps: 5 });
+  assert.deepEqual({ start: ride.pm.start, end: ride.pm.end, gps: ride.pm.gps_window_mins }, { start: '16:30', end: '22:30', gps: 10 });
   assert.deepEqual(ride.am.legs, [
-    { line: 'Red', board: 'Alewife', alight: 'Park Street', board_code: null, alight_code: null, alert_code: null },
-    { line: 'Green', board: 'Park Street', alight: 'Boylston', board_code: null, alight_code: null, alert_code: null },
+    { line: 'Red', board: 'Alewife', alight: 'Park Street', board_code: null, alight_code: null, alert_code: null, gps_after_code: null },
+    { line: 'Green', board: 'Park Street', alight: 'Boylston', board_code: null, alight_code: null, alert_code: null, gps_after_code: null },
   ]);
   assert.equal(ride.pm.legs.length, 2);
 });
@@ -44,6 +44,12 @@ test('a leg takes WMATA station codes for the tracker, upper-cased, and refuses 
     );
   }
   assert.throws(() => rideBlock({ ride: { am: { legs: [{ ...legs[0], alert_code: 'XYZ' }] } } }), /alert_code/);
+  const evening = rideBlock({ ride: { pm: { legs: [legs[1], { ...legs[0], gps_after_code: 'a11' }] } } }).pm.legs;
+  assert.deepEqual(
+    evening.map((l) => l.gps_after_code),
+    [null, 'A11'],
+  );
+  assert.throws(() => rideBlock({ ride: { pm: { legs: [{ ...legs[0], gps_after_code: 'Grosvenor' }] } } }), /ride\.pm\.legs\[0\]\.gps_after_code/);
 });
 
 test('[ride] is optional: absent is null, and a bare block takes every default', () => {
@@ -54,7 +60,7 @@ test('[ride] is optional: absent is null, and a bare block takes every default',
   assert.deepEqual(bare, {
     sheet_tab: 'rides',
     am: { start: '05:30', end: '10:00', gps_window_mins: 25, legs: [] },
-    pm: { start: '16:30', end: '22:30', gps_window_mins: 5, legs: [] },
+    pm: { start: '16:30', end: '22:30', gps_window_mins: 10, legs: [] },
   });
 });
 
@@ -123,13 +129,13 @@ test('the window is judged on the wall clock across the DST fall-back (2026-11-0
   assert.equal(judgeWindow({ at: new Date('2026-11-03T03:00:00Z'), leg: 'pm', ride, timeZone: TZ }).localDate, '2026-11-02');
 });
 
-test('the GPS window: morning opens after the walk and runs gps_window_mins, evening opens at the fence', () => {
+test('the GPS window: morning opens after the walk and runs gps_window_mins; an evening start opens none', () => {
   const at = new Date('2026-10-21T07:15:00-04:00');
   const am = gpsWindow({ at, leg: 'am', ride, walkMins: 5 });
   assert.equal(am.from.toISOString(), '2026-10-21T11:20:00.000Z');
   assert.equal(am.until.toISOString(), '2026-10-21T11:45:00.000Z');
   const pm = gpsWindow({ at, leg: 'pm', ride, walkMins: 5 });
   assert.equal(pm.from.toISOString(), '2026-10-21T11:15:00.000Z');
-  assert.equal(pm.until.toISOString(), '2026-10-21T11:20:00.000Z');
+  assert.equal(pm.until.toISOString(), '2026-10-21T11:15:00.000Z');
   assert.equal(MAX_FENCE_AGE_MS, 120_000);
 });

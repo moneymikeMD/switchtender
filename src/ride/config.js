@@ -5,8 +5,10 @@
 // calls them and go into the alert text; `board_code` and `alight_code` are
 // WMATA station codes (A15, F03) the tracker (CMB-152) matches against the
 // TrainPositions feed, with `alert_code` overriding the station it alerts
-// at (default: the one before `alight` along the track). The codes are
-// optional here and required by the Job, which is WMATA-only.
+// at (default: the one before `alight` along the track) and `gps_after_code`
+// naming the station after which the evening Job asks the phone for fixes
+// (CMB-161). The codes are optional here and required by the Job, which is
+// WMATA-only.
 //
 // Pure: parses the block out of the raw TOML, judges a fence time against a
 // leg's window in the route's zone, and computes the GPS window the phone is
@@ -18,7 +20,10 @@ import { LINES } from '../trackwork.js';
 
 export const LEGS = Object.freeze(['am', 'pm']);
 
-const DEFAULTS = { am: { start: '05:30', end: '10:00', gps_window_mins: 25 }, pm: { start: '16:30', end: '22:30', gps_window_mins: 5 } };
+export const RIDE_DEFAULTS = Object.freeze({
+  am: Object.freeze({ start: '05:30', end: '10:00', gps_window_mins: 25 }),
+  pm: Object.freeze({ start: '16:30', end: '22:30', gps_window_mins: 10 }),
+});
 
 const WEEKEND = new Set(['Saturday', 'Sunday']);
 
@@ -84,6 +89,7 @@ function legEntry(raw, path) {
     board_code: stationCode(raw.board_code, `${path}.board_code`),
     alight_code: stationCode(raw.alight_code, `${path}.alight_code`),
     alert_code: stationCode(raw.alert_code, `${path}.alert_code`),
+    gps_after_code: stationCode(raw.gps_after_code, `${path}.gps_after_code`),
   };
 }
 
@@ -92,7 +98,7 @@ function legBlock(raw, leg) {
   if (typeof block !== 'object' || Array.isArray(block)) {
     throw new ConfigError(`config: [ride.${leg}] should be a table`);
   }
-  const d = DEFAULTS[leg];
+  const d = RIDE_DEFAULTS[leg];
   const start = block.start === undefined ? d.start : clock(block.start, `ride.${leg}.start`);
   const end = block.end === undefined ? d.end : clock(block.end, `ride.${leg}.end`);
   if (minutesOf(start) >= minutesOf(end)) {
@@ -142,13 +148,14 @@ export function judgeWindow({ at, leg, ride, timeZone }) {
 }
 
 /**
- * When the phone should send fixes. The morning window opens after the walk
- * from the lot to the platform and runs for the leg's gps_window_mins; the
- * evening window opens at the fence.
+ * When the phone should send fixes after a start. The morning window opens
+ * after the walk from the lot to the platform and runs for the leg's
+ * gps_window_mins. The evening start opens none (from equals until, at the
+ * fence): the Job opens it later with a push (CMB-161).
  */
 export function gpsWindow({ at, leg, ride, walkMins = 0 }) {
-  const delay = leg === 'am' ? walkMins : 0;
-  const from = new Date(at.getTime() + delay * 60_000);
+  if (leg !== 'am') return { from: new Date(at.getTime()), until: new Date(at.getTime()) };
+  const from = new Date(at.getTime() + walkMins * 60_000);
   const until = new Date(from.getTime() + ride[leg].gps_window_mins * 60_000);
   return { from, until };
 }
