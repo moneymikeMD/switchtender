@@ -1,4 +1,4 @@
-// Tests for the ride Job (src/ride/job.js): whole simulated morning rides in
+// Tests for the ride Job (src/ride/job.js): whole simulated rides in
 // milliseconds. No network and no real clock: the feed is synthesised over
 // the recorded StandardRoutes fixture, the store is in memory, ntfy and WMATA
 // are a stub fetch, and sleep advances a fake clock.
@@ -419,15 +419,190 @@ test('a ride that never locks and never ends is capped at two hours', async () =
   );
 });
 
-test('a pm ride ends at once as pm-not-built: a row, no push, no feed call', async () => {
-  const w = world({ ride: freshRide({ leg: 'pm' }) });
+// The evening (CMB-161): Green from Waterfront, Red home from Gallery Place.
+const homeGreen = {
+  line: 'Green',
+  board: 'Waterfront',
+  alight: 'Gallery Place',
+  board_code: 'F04',
+  alight_code: 'F01',
+  alert_code: null,
+  gps_after_code: null,
+};
+const homeRed = { line: 'Red', board: 'Gallery Place', alight: 'Shady Grove', board_code: 'B01', alight_code: 'A15', alert_code: null, gps_after_code: 'A11' };
+const pmConfig = { ...config, ride: { ...config.ride, pm: { gps_window_mins: 10, legs: [homeGreen, homeRed] } } };
+
+function eveningTrains() {
+  const minute = (ms) => Math.ceil(ms / MIN) * MIN;
+  const g1 = makeTrain({ id: 'G1', line: 'GR', track: 1, from: 'F04', dir: 1, departAt: T0 + 2 * MIN, dest: 'E10' });
+  const a1 = minute(g1.arrivalAt('F01'));
+  return {
+    g1,
+    gx: makeTrain({ id: 'GX', line: 'GR', track: 1, from: 'F04', dir: -1, departAt: T0 + 3 * MIN, dest: 'F11' }),
+    g2: makeTrain({ id: 'G2', line: 'GR', track: 1, from: 'F04', dir: 1, departAt: T0 + 8 * MIN, dest: 'E10' }),
+    g3: makeTrain({ id: 'G3', line: 'GR', track: 1, from: 'F04', dir: 1, departAt: T0 + 14 * MIN, dest: 'E10' }),
+    r1: makeTrain({ id: 'R1', line: 'RD', track: 1, from: 'B01', dir: -1, departAt: a1, dest: 'A15' }),
+    r2: makeTrain({ id: 'R2', line: 'RD', track: 1, from: 'B01', dir: -1, departAt: a1 + 3 * MIN, dest: 'A15' }),
+    rx: makeTrain({ id: 'RX', line: 'RD', track: 1, from: 'B01', dir: 1, departAt: a1 + 4 * MIN, dest: 'B11' }),
+    r3: makeTrain({ id: 'R3', line: 'RD', track: 1, from: 'B01', dir: -1, departAt: a1 + 9 * MIN, dest: 'A15' }),
+    r4: makeTrain({ id: 'R4', line: 'RD', track: 1, from: 'B01', dir: -1, departAt: a1 + 15 * MIN, dest: 'A15' }),
+  };
+}
+
+function eveningRide() {
+  const ride = newRide({
+    key: rideKey('2026-10-21', 'pm'),
+    leg: 'pm',
+    localDate: '2026-10-21',
+    timeZone: TZ,
+    fenceAt: new Date(T0).toISOString(),
+    now: new Date(T0),
+    gpsFrom: new Date(T0),
+    gpsUntil: new Date(T0),
+  });
+  return withLaunch(ride, { ok: true, operation: 'op', now: new Date(T0 + 1000) });
+}
+
+// Underground the phone reports a wide radius; on the surface past Grosvenor, R3's track.
+// The two tight fixes on R2 come before the GPS window and must not count.
+function eveningFixes(t) {
+  const surfaced = t.r3.arrivalAt('A11') + 30_000;
+  const early = fixesAlong(t.r2, [t.r2.departAt + 5 * MIN, t.r2.departAt + 5 * MIN + 30_000]);
+  const underground = fixesAlong(t.r3, [surfaced - 120_000, surfaced - 60_000], { accuracy: 300, speedKmh: 0 });
+  return [
+    ...early,
+    ...underground,
+    ...fixesAlong(
+      t.r3,
+      Array.from({ length: 8 }, (_, i) => surfaced + 20_000 * (i + 1)),
+      { speedKmh: 0 },
+    ),
+  ];
+}
+
+test('an evening ride: both Green candidates alert by name, Red candidates follow the transfer gap, GPS past Grosvenor locks one', async () => {
+  const t = eveningTrains();
+  const live = world({ trains: Object.values(t), fixes: eveningFixes(t), ride: eveningRide() });
+  live.deps.config = pmConfig;
+  // Long enough that R4 reaches Rockville while the ride is still running, so the lock is what keeps it quiet.
+  live.deps.endAfterMs = 15 * MIN;
+  const result = await runRide(live.deps);
+  assert.deepEqual(result, { reason: 'done', exitCode: 0 });
+  const ride = live.ride;
+
+  assert.deepEqual(ride.tracking.boarding, ['G1', 'G2'], 'the wrong-way train and the third train are not candidates');
+  assert.deepEqual(ride.tracking.picks, [
+    ['R2', 'R3'],
+    ['R3', 'R4'],
+  ]);
+  assert.deepEqual(ride.tracking.candidates, ['R2', 'R3', 'R4'], 'R1 left inside the transfer gap; RX goes the other way');
+  assert.deepEqual(
+    ride.alerts.map((a) => [a.key, a.station, a.train_id, a.title]),
+    [
+      ['leg0:0', 'F02', 'G1', 'alert'],
+      ['leg0:1', 'F02', 'G2', 'once'],
+      ['leg1:0', 'A14', 'R2', 'alert'],
+      ['leg1:1', 'A14', 'R3', 'alert'],
+    ],
+    'R4 is narrowed away once R3 locks',
+  );
+  assert.deepEqual(
+    ride.alerts.slice(0, 2).map((a) => a.text),
+    [
+      `Next stop Gallery Place. Transfer to Red. You're on the ${clockAt(t.g1.departAt, TZ)} from Waterfront.`,
+      `Next stop Gallery Place. Transfer to Red. You're on the ${clockAt(t.g2.departAt, TZ)} from Waterfront.`,
+    ],
+  );
+  assert.equal(ride.alerts[3].text, `Next stop Shady Grove. You're on the ${clockAt(t.r3.departAt, TZ)} from Gallery Place.`);
+
+  // The GPS window opens when the leading Red candidate leaves Grosvenor, and the lock comes from surface fixes.
+  const gpsAt = Date.parse(ride.tracking.gps_from);
+  assert.ok(gpsAt >= t.r2.arrivalAt('A11') && gpsAt < t.r2.arrivalAt('A12'));
+  assert.equal(Date.parse(ride.tracking.gps_until) - gpsAt, 10 * MIN);
+  assert.equal(ride.lock.train_id, 'R3');
+  assert.ok(Date.parse(ride.lock.at) > t.r3.arrivalAt('A11') && Date.parse(ride.lock.at) < t.r3.arrivalAt('A14'));
+  assert.deepEqual(
+    statuses(live).map((p) => [p.priority, text(p)]),
+    [
+      ['3', 'Sending GPS fixes to find your train.'],
+      ['3', `Tracking the ${clockAt(t.r3.departAt, TZ)} from Gallery Place`],
+    ],
+  );
+  assert.deepEqual(
+    alerts(live).map((p) => [p.title, p.priority]),
+    [
+      ['Ride alert', '5'],
+      ['Ride', '5'],
+      ['Ride alert', '5'],
+      ['Ride alert', '5'],
+    ],
+  );
+  for (const p of alerts(live)) assert.match(p.actions, /ride\/cancel\?leg=pm&reason=off&token=/);
+  assert.ok(alerts(live)[0].at < t.g1.arrivalAt('F01') && alerts(live)[3].at < t.r3.arrivalAt('A15'), 'each alert lands before the stop');
+  assert.equal(live.rows.length, 1);
+  assert.equal(live.rows[0].ended.reason, 'done');
+});
+
+test('an evening lock on the leading Red train quiets the others and ends the ride after its alert', async () => {
+  const t = eveningTrains();
+  const surfaced = t.r2.arrivalAt('A11') + 30_000;
+  const fixes = fixesAlong(
+    t.r2,
+    Array.from({ length: 6 }, (_, i) => surfaced + 20_000 * (i + 1)),
+    { speedKmh: 0 },
+  );
+  const w = world({ trains: Object.values(t), fixes, ride: eveningRide() });
+  w.deps.config = pmConfig;
+  assert.deepEqual(await runRide(w.deps), { reason: 'done', exitCode: 0 });
+  assert.equal(w.ride.lock.train_id, 'R2');
+  assert.deepEqual(
+    w.ride.alerts.map((a) => [a.key, a.train_id, a.title]),
+    [
+      ['leg0:0', 'G1', 'alert'],
+      ['leg0:1', 'G2', 'once'],
+      ['leg1:0', 'R2', 'alert'],
+    ],
+  );
+  assert.ok(Date.parse(w.ride.ended.at) < t.r3.arrivalAt('A14'), 'no wait for the trains it narrowed away');
+});
+
+test('an evening ride with no fix that matches still alerts every Red candidate', async () => {
+  const t = eveningTrains();
+  const poor = eveningFixes(t).map((f) => ({ ...f, accuracy_m: 120 }));
+  const w = world({ trains: Object.values(t), fixes: poor, ride: eveningRide() });
+  w.deps.config = pmConfig;
   const result = await runRide(w.deps);
-  assert.deepEqual(result, { reason: 'pm-not-built', exitCode: 0 });
-  assert.deepEqual(w.pushes, []);
-  assert.equal(w.feedCalls, 0);
-  assert.equal(w.ride.ended.reason, 'pm-not-built');
-  assert.equal(w.ride.status, 'ended');
-  assert.equal(w.rows.length, 1);
+  assert.deepEqual(result, { reason: 'done', exitCode: 0 });
+  assert.equal(w.ride.lock, null);
+  assert.deepEqual(
+    w.ride.alerts.map((a) => [a.key, a.train_id, a.title]),
+    [
+      ['leg0:0', 'G1', 'alert'],
+      ['leg0:1', 'G2', 'once'],
+      ['leg1:0', 'R2', 'alert'],
+      ['leg1:1', 'R3', 'once'],
+      ['leg1:2', 'R4', 'once'],
+    ],
+  );
+  assert.deepEqual(
+    w.ride.statuses.map((s) => s.key),
+    ['gps'],
+  );
+  assert.equal(w.rows[0].ended.reason, 'done');
+});
+
+test('an evening ride whose Green candidates all leave the feed before their alert ends lost, loudly', async () => {
+  const t = eveningTrains();
+  t.g1 = makeTrain({ id: 'G1', line: 'GR', track: 1, from: 'F04', dir: 1, departAt: T0 + 2 * MIN, dest: 'E10', vanishAt: T0 + 3 * MIN });
+  t.g2 = makeTrain({ id: 'G2', line: 'GR', track: 1, from: 'F04', dir: 1, departAt: T0 + 8 * MIN, dest: 'E10', vanishAt: T0 + 9 * MIN });
+  const w = world({ trains: Object.values(t), ride: eveningRide() });
+  w.deps.config = pmConfig;
+  assert.deepEqual(await runRide(w.deps), { reason: 'lost', exitCode: 0 });
+  assert.deepEqual(w.ride.alerts, []);
+  assert.deepEqual(
+    w.pushes.map((p) => [p.title, p.priority, text(p)]),
+    [['Ride status', '5', NOT_TRACKING]],
+  );
 });
 
 test('bootstrap and config failures are loud and exit 1; an ended or missing ride is left alone', async () => {
