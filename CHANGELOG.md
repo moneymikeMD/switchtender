@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/moneymikeMD/switchtender/compare/v1.9.0...v1.10.0) (2026-11-05)
+
+
+### Features
+
+* publish pushes through the ntfy relay and log ntfy's error code (CMB-160) ([#68](https://github.com/moneymikeMD/switchtender/issues/68)) ([a00e3f3](https://github.com/moneymikeMD/switchtender/commit/a00e3f3fc286e4b07bb94f89644c9c39f245961c))
+
+
+### Bug Fixes
+
+* read the ntfy relay key from the relay_key 1Password field (CMB-160) ([#70](https://github.com/moneymikeMD/switchtender/issues/70)) ([c0d0da8](https://github.com/moneymikeMD/switchtender/commit/c0d0da8abf36dc83c20ab75eb5692ed3d683cc54))
+
 ## [1.9.0](https://github.com/moneymikeMD/switchtender/compare/v1.8.0...v1.9.0) (2026-10-21)
 
 
