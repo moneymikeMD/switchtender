@@ -94,3 +94,27 @@ test('no topic sends nothing; a refused or unreachable ntfy is reported, never t
   assert.equal(down.error, 'network (TypeError): fetch failed');
   assert.equal((await pushRide({ topic: 't', kind: 'nope', text: 'x' })).ok, false);
 });
+
+test('ride pushes use NTFY_BASE_URL and X-Relay-Key, retry a short 429 once, and never log the topic (CMB-160)', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return calls.length === 1
+      ? { ok: false, status: 429, headers: new Headers({ 'retry-after': '2' }), text: async () => '{"code":42901}' }
+      : { ok: true, status: 200 };
+  };
+  const env = { NTFY_BASE_URL: 'https://push.example.test', NTFY_RELAY_KEY: 'k3y' };
+  const result = await pushRide({ topic: 'r1d3t0p1c', kind: 'alert', text: 'x', fetchImpl, env, sleep: async () => {} });
+  assert.deepEqual(result, { ok: true, sent: true, error: null });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((c) => c.url === 'https://push.example.test/r1d3t0p1c' && c.init.headers['X-Relay-Key'] === 'k3y'));
+  const refused = await pushRide({
+    topic: 'r1d3t0p1c',
+    kind: 'alert',
+    text: 'x',
+    env: {},
+    fetchImpl: async () => ({ ok: false, status: 429, headers: new Headers(), text: async () => '{"code":42908}' }),
+  });
+  assert.equal(refused.error, 'ntfy 429 42908');
+  assert.ok(!refused.error.includes('r1d3t0p1c'));
+});

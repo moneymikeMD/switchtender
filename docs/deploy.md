@@ -32,8 +32,16 @@ Secrets and where they land in the container:
 | `switchtender-shared-secret` | `SWITCHTENDER_SHARED_SECRET` |
 | `switchtender-ntfy-topic` | `NTFY_TOPIC` |
 | `switchtender-ride-ntfy-topic` | `RIDE_NTFY_TOPIC`, on the ride Job only |
+| `switchtender-ntfy-relay-key` | `NTFY_RELAY_KEY`, on the service and the ride Job (CMB-160) |
 
 The image (`Dockerfile`) holds `src/` and the Boston example config only. `.dockerignore` and `.gcloudignore` keep `config.toml` and `.env` out of both the build context and the source upload.
+
+### ntfy relay (CMB-160)
+
+ntfy.sh rate-limits anonymous publishers per IP and Cloud Run egress IPs are shared, so pushes from Cloud Run were refused with HTTP 429. The deploy script sets `NTFY_BASE_URL=https://push.longb.org` on the service and the
+ride Job, and mounts `NTFY_RELAY_KEY` from `switchtender-ntfy-relay-key` (1Password item `ntfy relay`, vault `Lab`, field `relay key`); the code sends it as `X-Relay-Key`. The relay (LAB-687) publishes to ntfy.sh from the
+home IP, so the phone still receives over FCM. With both variables unset the code posts to `https://ntfy.sh` with no extra header. A refused push logs `ntfy <status> <ntfy code> retry-after <s>`, never the topic: ntfy's
+`42901` is the request bucket and `42908` the daily quota. A 429 with `Retry-After` of 10 s or less is retried once.
 
 ## Sheet logging from Cloud Run
 
@@ -83,7 +91,7 @@ Every call pushes, whatever the verdict. The title says the choice (`switchtende
 trip from home, so the minutes and the arrival clock cover the drive about to start; the row logs `measured_from = origin`. On office days the 7:30 poll sample also runs, so those mornings carry two
 7:30 rows, `poll` and `schedule`.
 
-The push goes to `https://ntfy.sh/$NTFY_TOPIC`. `ntfy.sh` is the public instance (CMB-36): self-hosting was rejected because it would mean this scale-to-zero public service reaching back into a
+The push goes to `$NTFY_BASE_URL/$NTFY_TOPIC` (`https://ntfy.sh` when unset). `ntfy.sh` is the public instance (CMB-36): self-hosting was rejected because it would mean this scale-to-zero public service reaching back into a
 private network. The free tier has no per-topic auth, so `NTFY_TOPIC` — a long random slug from `openssl rand -hex 20`, never the word "switchtender" — is itself the secret, minted and stored the same
 way as the shared secret (1Password item `Switchtender ntfy topic` in `Software_Development`, field `credential`). Subscribe to that topic in the ntfy Android app (the Google Play build; confirmed
 FCM-backed, so delivery works with the app closed) to receive the push.

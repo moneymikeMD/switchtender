@@ -155,6 +155,8 @@ The Job reads its own environment once at start and exits 2 with the first missi
 | `RIDE_KEY` | Required. The ride object's key, set per execution by `/ride/start`. |
 | `RIDE_BUCKET` | Required. The bucket above, set per execution by `/ride/start`. |
 | `RIDE_NTFY_TOPIC` | Required. The ntfy.sh topic the ride pushes go to. A second long random slug, never `NTFY_TOPIC`: the phone vibrates on this one and must not on the 7:30 verdict. |
+| `NTFY_BASE_URL` | Optional. Where pushes are published; default `https://ntfy.sh`. Cloud Run sets `https://push.longb.org`, the home relay (CMB-160). |
+| `NTFY_RELAY_KEY` | Optional. Sent as `X-Relay-Key` on every push when set. From Secret Manager `switchtender-ntfy-relay-key`; never logged. |
 | `RIDE_SERVICE_URL` | Required. The service's own URL, for the cancel buttons on each alert (`<url>/ride/cancel?...`). |
 | `TRANSIT_API_KEY` | Required. The WMATA key, sent as the `api_key` header, never in a URL or a log line. |
 | `SWITCHTENDER_CONFIG` | The config file (default `config.toml`), for the leg codes, `route.timezone` and `[log] sheet_id`. The Job never needs `ROUTES_API_KEY`. |
@@ -199,7 +201,7 @@ Every alert and status push is appended to the object (`alerts`, `statuses`) bef
 
 ### Ride push wire format (for the phone macro, CMB-154)
 
-Every ride push is `POST https://ntfy.sh/<RIDE_NTFY_TOPIC>` with:
+Every ride push is `POST <NTFY_BASE_URL>/<RIDE_NTFY_TOPIC>` (`NTFY_BASE_URL` defaults to `https://ntfy.sh`; with `NTFY_RELAY_KEY` set the request also carries `X-Relay-Key`, which the phone never sees) with:
 
 | Header or body | Value |
 | --- | --- |
