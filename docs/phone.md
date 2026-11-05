@@ -104,15 +104,21 @@ A morning that broke the pattern — parked and then gave up and drove, a lift f
 
 ## Ride alerts (CMB-148)
 
-The morning Metro ride is tracked by the server (docs/configuration.md "Rides"); the phone only starts it, sends GPS fixes until the train is locked, and buzzes on the pushes. Three macros in
+The Metro ride is tracked by the server (docs/configuration.md "Rides"); the phone only starts it, sends GPS fixes when asked until the train is locked, and buzzes on the pushes. Four macros in
 `docs/switchtender.category` do that, with the host as `<service>`:
 
 - **Switchtender ride am** (empty trigger). POSTs `/ride/start?leg=am`; on `started: true` it waits until `gps_from_epoch`, then forces a location update about every 20-30 s and POSTs
   `/ride/fix?leg=am&lat=&lon=&acc=&kmh=` until the answer carries `done: true` or `gps_until_epoch` passes. Set `st_url` to the service's base URL and `st_key` to the shared secret, as for the
   other macros. Run it from **Switchtender arrived park** by adding a Macro Run action at the end, so the lot fence that records the arrival also starts the ride.
+- **Switchtender ride pm fixes** (CMB-161). The evening ride starts from a fence on the entrance of the station the ride home begins at, whose macro only POSTs `/ride/start?leg=pm` (that fence
+  macro is built on the phone and is not in the export; it needs no fix loop, since the start answer's GPS window for `pm` is empty). This macro runs the fixes instead: Notification Received from
+  the ntfy app, title `Ride status` exactly, and only when the text contains `Sending GPS fixes`, the quiet status the Job sends once a Red candidate leaves `gps_after_code`. It then forces a location
+  update about every 20-30 s and POSTs `/ride/fix?leg=pm&lat=&lon=&acc=&kmh=` until the answer carries `done: true`, which the server sends on a lock, at the end of the ride, or when the Job's
+  `gps_window_mins` window closes. Set `st_url` and `st_key` as for the other macros.
 - **Switchtender ride alert**. Notification Received from the ntfy app, title matching `Ride alert` exactly. Splits the body on `|`, drops the push when the send epoch after it is more than 60 s old,
   otherwise vibrates `700,150,700,150,700,1200` until the notification is gone (3 min cap). The "I'm off" and "Not riding" buttons clear the notification, which ends the loop.
-- **Switchtender ride buzz**. The same on title `Ride` exactly, one buzz. `Ride status` pushes rely on the ntfy app's own priority handling and trigger nothing here.
+- **Switchtender ride buzz**. The same on title `Ride` exactly, one buzz. `Ride status` pushes rely on the ntfy app's own priority handling and trigger nothing here except the
+  evening GPS status above.
 
 Subscribe to the ride topic (`RIDE_NTFY_TOPIC`, docs/deploy.md) in the ntfy app. Title matching is exact on purpose: "Contains" on `Ride` would also fire on `Ride alert` and `Ride status`.
 
@@ -128,7 +134,7 @@ What the owner's phone was measured to do (CMB-149, 2026-10-21):
 | Force Location Update in a pocket | a fix every 17-25 s |
 | GPS speed, `{last_loc_speed_kmh}` | 0 on every fix, above ground and moving; the server ignores it and derives movement from distance between fixes |
 | GPS accuracy above ground on the train | 17-900 m, about half under 50 m |
-| GPS underground | reports success with 13-600 m accuracy and speed 0; nothing in a fix says "underground", which is why the evening leg is not built |
+| GPS underground | reports success with 13-600 m accuracy and speed 0; nothing in a fix says "underground", which is why the evening ride starts on the entrance fence alone and asks for fixes only past Grosvenor (CMB-161) |
 
 ## Geofence radius
 
