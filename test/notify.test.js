@@ -71,7 +71,14 @@ test('a 429 with Retry-After 2 is retried once; the error carries the ntfy code 
   ];
   const waits = [];
   let n = 0;
-  const result = await pushVerdict({ choice: 'drive', spoken: 'x', topic: 'secrettopic', fetchImpl: async () => responses[n++], sleep: async (ms) => waits.push(ms), env: {} });
+  const result = await pushVerdict({
+    choice: 'drive',
+    spoken: 'x',
+    topic: 'secrettopic',
+    fetchImpl: async () => responses[n++],
+    sleep: async (ms) => waits.push(ms),
+    env: {},
+  });
   assert.equal(n, 2);
   assert.deepEqual(waits, [2000]);
   assert.deepEqual(result, { ok: false, sent: false, error: 'ntfy 429 42901 retry-after 2' });
@@ -86,7 +93,8 @@ test('a retry that succeeds sends; a Retry-After over 10 s is not retried (CMB-1
     topic: 't',
     sleep: async () => {},
     env: {},
-    fetchImpl: async () => (n++ === 0 ? { ok: false, status: 429, headers: new Headers({ 'retry-after': '1' }), text: async () => '' } : { ok: true, status: 200 }),
+    fetchImpl: async () =>
+      n++ === 0 ? { ok: false, status: 429, headers: new Headers({ 'retry-after': '1' }), text: async () => '' } : { ok: true, status: 200 },
   });
   assert.deepEqual(ok, { ok: true, sent: true, error: null });
   let m = 0;
