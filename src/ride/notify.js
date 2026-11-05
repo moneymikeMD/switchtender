@@ -5,7 +5,7 @@
 // Wire format, which the MacroDroid macro parses and which docs/configuration.md
 // repeats:
 //
-//   POST https://ntfy.sh/<RIDE_NTFY_TOPIC>
+//   POST <NTFY_BASE_URL, default https://ntfy.sh>/<RIDE_NTFY_TOPIC>, plus X-Relay-Key when NTFY_RELAY_KEY is set
 //   Title:    "Ride alert"   an alert that vibrates until dismissed
 //             "Ride"         an alert that buzzes once
 //             "Ride status"  a status line, not an alert
@@ -20,7 +20,7 @@
 //
 // Never throws (same policy as src/notify.js); the topic is never logged.
 
-export const NTFY_URL = 'https://ntfy.sh';
+import { publish } from '../ntfy.js';
 
 export const TITLE = Object.freeze({ alert: 'Ride alert', once: 'Ride', status: 'Ride status' });
 export const PRIORITY = Object.freeze({ loud: 5, quiet: 3 });
@@ -48,17 +48,11 @@ export function cancelActions({ serviceUrl, leg, token }) {
  * (one buzz) or 'status'; a status is loud unless `quiet`. Returns
  * { ok, sent, error }; `sent` is false without a topic.
  */
-export async function pushRide({ topic, kind, text, sentAtMs = Date.now(), quiet = false, actions = null, fetchImpl = fetch, signal }) {
+export async function pushRide({ topic, kind, text, sentAtMs = Date.now(), quiet = false, actions = null, fetchImpl = fetch, signal, env, sleep }) {
   if (!topic) return { ok: true, sent: false, error: null };
   const title = TITLE[kind];
   if (!title) return { ok: false, sent: false, error: `unknown push kind ${kind}` };
   const headers = { Title: title, Priority: String(kind === 'status' && quiet ? PRIORITY.quiet : PRIORITY.loud) };
   if (actions) headers.Actions = actions;
-  try {
-    const response = await fetchImpl(`${NTFY_URL}/${topic}`, { method: 'POST', headers, body: rideBody(text, sentAtMs), signal });
-    if (!response.ok) return { ok: false, sent: false, error: `ntfy ${response.status}` };
-    return { ok: true, sent: true, error: null };
-  } catch (cause) {
-    return { ok: false, sent: false, error: `network (${cause?.name ?? 'Error'}): ${cause?.message ?? cause}` };
-  }
+  return publish({ topic, headers, body: rideBody(text, sentAtMs), fetchImpl, signal, env, sleep });
 }

@@ -32,6 +32,8 @@ OP_VAULT="Software_Development"
 OP_SHARED_ITEM="Switchtender shared secret"
 OP_NTFY_ITEM="Switchtender ntfy topic"
 OP_RIDE_NTFY_ITEM="Switchtender ride ntfy topic"
+NTFY_BASE_URL="https://push.longb.org"
+OP_RELAY_PATH="op://Lab/ntfy relay/relay key"
 RIDE_JOB="switchtender-ride"
 RIDE_BUCKET="${PROJECT}-rides"
 SCHEDULER_JOB="switchtender-verdict-check"
@@ -176,6 +178,10 @@ ntfy_topic_secret "$OP_NTFY_ITEM" switchtender-ntfy-topic
 # topic: the 7:30 verdict must never ring that way (CMB-153).
 ntfy_topic_secret "$OP_RIDE_NTFY_ITEM" switchtender-ride-ntfy-topic
 
+# Relay key for the home ntfy relay at NTFY_BASE_URL (CMB-160, LAB-687): Cloud Run egress IPs are
+# shared, so ntfy.sh rate-limits them; the relay publishes from the home IP. Sent as X-Relay-Key.
+op_value "$OP_RELAY_PATH" | create_secret_from_stdin switchtender-ntfy-relay-key
+
 # The commute description. Gitignored, never in the image; mounted as a file.
 if [ "$update_config" = 1 ]; then
   add_secret_version_from_stdin switchtender-config <"$CONFIG_FILE"
@@ -187,7 +193,7 @@ log "granting ${RUNTIME_SA} read access to each secret"
 for name in switchtender-routes-api-key switchtender-traffic-api-key \
   switchtender-transit-api-key switchtender-events-api-key \
   switchtender-shared-secret switchtender-ntfy-topic switchtender-ride-ntfy-topic \
-  switchtender-config; do
+  switchtender-ntfy-relay-key switchtender-config; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member "serviceAccount:${RUNTIME_SA}" \
     --role roles/secretmanager.secretAccessor \
@@ -242,8 +248,8 @@ gcloud run deploy "$SERVICE" \
   --max-instances 1 \
   --memory 256Mi \
   --timeout 30 \
-  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_JOB_PROJECT=${PROJECT}" \
-  --set-secrets "/config/config.toml=switchtender-config:latest,ROUTES_API_KEY=switchtender-routes-api-key:latest,TRAFFIC_API_KEY=switchtender-traffic-api-key:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,EVENTS_API_KEY=switchtender-events-api-key:latest,SWITCHTENDER_SHARED_SECRET=switchtender-shared-secret:latest,NTFY_TOPIC=switchtender-ntfy-topic:latest" \
+  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_JOB_PROJECT=${PROJECT},NTFY_BASE_URL=${NTFY_BASE_URL}" \
+  --set-secrets "/config/config.toml=switchtender-config:latest,ROUTES_API_KEY=switchtender-routes-api-key:latest,TRAFFIC_API_KEY=switchtender-traffic-api-key:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,EVENTS_API_KEY=switchtender-events-api-key:latest,SWITCHTENDER_SHARED_SECRET=switchtender-shared-secret:latest,NTFY_TOPIC=switchtender-ntfy-topic:latest,NTFY_RELAY_KEY=switchtender-ntfy-relay-key:latest" \
   --quiet
 
 url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
@@ -272,8 +278,8 @@ gcloud run jobs deploy "$RIDE_JOB" \
   --task-timeout 8100s \
   --cpu 1 \
   --memory 512Mi \
-  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_SERVICE_URL=${url}" \
-  --set-secrets "/config/config.toml=switchtender-config:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,RIDE_NTFY_TOPIC=switchtender-ride-ntfy-topic:latest" \
+  --set-env-vars "SWITCHTENDER_CONFIG=/config/config.toml,NODE_ENV=production,RIDE_BUCKET=${RIDE_BUCKET},RIDE_SERVICE_URL=${url},NTFY_BASE_URL=${NTFY_BASE_URL}" \
+  --set-secrets "/config/config.toml=switchtender-config:latest,TRANSIT_API_KEY=switchtender-transit-api-key:latest,RIDE_NTFY_TOPIC=switchtender-ride-ntfy-topic:latest,NTFY_RELAY_KEY=switchtender-ntfy-relay-key:latest" \
   --quiet
 
 # Starting an execution with env overrides needs run.jobs.runWithOverrides,
