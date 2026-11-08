@@ -9,7 +9,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { parseConfig, loadSecrets, loadConfig, ConfigError, SECRETS, VENUE_PROVIDERS } from '../src/config.js';
+import { parse } from 'smol-toml';
+import { parseConfig, buildConfig, loadSecrets, loadConfig, ConfigError, SECRETS, VENUE_PROVIDERS } from '../src/config.js';
 
 const EXAMPLE = 'config.example.toml';
 const exampleText = readFileSync(EXAMPLE, 'utf8');
@@ -277,4 +278,35 @@ test('[ride] loads from the example, is optional, and the rides tab may not reus
   assert.equal(parseConfig(exampleText.replace(/^\[ride\][\s\S]*?(?=^\[log\])/m, '')).ride, null);
   assert.throws(() => parseConfig(exampleText.replace('sheet_tab = "rides"', 'sheet_tab = "verdicts"')), /ride\.sheet_tab must differ/);
   assert.throws(() => parseConfig(exampleText.replace('gps_window_mins = 25', 'gps_window_mins = "long"')), /ride\.am\.gps_window_mins/);
+});
+
+test('buildConfig on the config parseConfig yields returns an equal config', () => {
+  const parsed = parseConfig(exampleText);
+  assert.deepEqual(buildConfig(structuredClone(parsed)), parsed);
+});
+
+test('buildConfig validates a plain object like parseConfig', () => {
+  assert.deepEqual(buildConfig(parse(exampleText)), parseConfig(exampleText));
+});
+
+test('buildConfig names a missing required key', () => {
+  const raw = parse(exampleText);
+  delete raw.trigger.lead_miles;
+  assert.throws(
+    () => buildConfig(raw),
+    (e) => e instanceof ConfigError && e.message.includes('"trigger.lead_miles"'),
+  );
+});
+
+test('buildConfig names a transposed coordinate', () => {
+  const raw = parse(exampleText);
+  raw.route.origin.lat = 120.5;
+  assert.throws(
+    () => buildConfig(raw),
+    (e) => e instanceof ConfigError && e.message.includes('route.origin.lat'),
+  );
+});
+
+test('buildConfig rejects a non-object', () => {
+  assert.throws(() => buildConfig(null), ConfigError);
 });

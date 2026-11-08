@@ -81,7 +81,7 @@ function clockTime(raw, path) {
 
 /** Build one place from `[route.<name>]`. Null for an absent optional place. */
 export function place(raw, name) {
-  if (raw.route?.[name] === undefined && OPTIONAL_PLACES.includes(name)) return null;
+  if (raw.route?.[name] == null && OPTIONAL_PLACES.includes(name)) return null;
   const p = must(raw, `route.${name}`, 'object');
   for (const key of Object.keys(p)) {
     if (PLACE_KEYS.includes(key)) continue;
@@ -226,18 +226,18 @@ function venueEntry(v, i) {
   }
   let mlb_team_id = null;
   if (provider === 'mlb') {
-    if (v.mlb_team_id === undefined) {
+    if (v.mlb_team_id === undefined || v.mlb_team_id === null) {
       throw new ConfigError(`config: venues[${i}] has provider "mlb" and is missing "mlb_team_id"`);
     }
     if (!Number.isInteger(v.mlb_team_id) || v.mlb_team_id <= 0) {
       throw new ConfigError(`config: venues[${i}].mlb_team_id should be a positive integer`);
     }
     mlb_team_id = v.mlb_team_id;
-  } else if (v.mlb_team_id !== undefined) {
+  } else if (v.mlb_team_id !== undefined && v.mlb_team_id !== null) {
     throw new ConfigError(`config: venues[${i}].mlb_team_id is only meaningful with provider = "mlb"`);
   }
   let ticketmaster_venue_id = null;
-  if (v.ticketmaster_venue_id !== undefined) {
+  if (v.ticketmaster_venue_id !== undefined && v.ticketmaster_venue_id !== null) {
     if (provider !== 'ticketmaster') {
       throw new ConfigError(`config: venues[${i}].ticketmaster_venue_id is only meaningful with provider = "ticketmaster"`);
     }
@@ -264,6 +264,17 @@ export function parseConfig(text) {
     raw = parse(text);
   } catch (cause) {
     throw new ConfigError(`config: could not parse TOML (${cause.message})`);
+  }
+  return buildConfig(raw);
+}
+
+/**
+ * Validate a plain object shaped like the parsed TOML, with the same rules and ConfigError messages as parseConfig.
+ * Accepts its own output, so a built config can be passed back in.
+ */
+export function buildConfig(raw) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ConfigError('config: expected an object');
   }
 
   const route = Object.fromEntries(PLACES.map((n) => [n, place(raw, n)]));

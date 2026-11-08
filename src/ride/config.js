@@ -58,7 +58,7 @@ function nonNegative(value, path, fallback) {
 const STATION_CODE = /^[A-Z]\d{2}$/;
 
 function stationCode(raw, path) {
-  if (raw === undefined) return null;
+  if (raw === undefined || raw === null) return null;
   if (typeof raw !== 'string' || !STATION_CODE.test(raw.trim().toUpperCase())) {
     throw new ConfigError(`config: key "${path}" should be a WMATA station code like "A15", got ${JSON.stringify(raw)}`);
   }
