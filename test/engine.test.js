@@ -91,6 +91,35 @@ test('incidents are unknown without TRAFFIC_API_KEY, charged once, and fetched w
   );
 });
 
+test('opts.keys replaces config.secrets, which a multi-user config may lack', async () => {
+  const config = baseConfig();
+  delete config.secrets;
+  const requests = [];
+  const fetchImpl = stubFetch();
+  const recording = async (url, init = {}) => {
+    requests.push({ url: String(url), headers: init.headers ?? {} });
+    if (String(url).includes('tomtom')) return { ok: true, json: async () => ({ incidents: [] }) };
+    return fetchImpl(url, init);
+  };
+  const keys = { ROUTES_API_KEY: 'svc-routes', TRAFFIC_API_KEY: 'svc-traffic' };
+  const a = await runVerdict(config, { fetchImpl: recording, log: false, keys });
+  assert.ok(
+    requests.some((r) => r.url.startsWith(ROUTES) && JSON.stringify(r.headers).includes('svc-routes')),
+    'routes request carries the service key',
+  );
+  assert.ok(
+    requests.some((r) => r.url.includes('tomtom') && r.url.includes('svc-traffic')),
+    'TomTom request carries the service key',
+  );
+
+  const seen = [];
+  const b = await runVerdict(config, { fetchImpl: stubFetch(seen), log: false, keys: { ROUTES_API_KEY: 'svc-routes' } });
+  assert.ok(!seen.some((u) => u.includes('tomtom')), 'no TomTom call without the key');
+  assert.equal(b.incidents.score, null);
+  assert.match(b.incidents.reasons[0], /no TRAFFIC_API_KEY/);
+  assert.ok(b.verdict.confidence < a.verdict.confidence, 'a missing optional key lowers confidence');
+});
+
 test('a RouteError propagates to the caller', async () => {
   const failing = async () => ({ ok: false, status: 403, json: async () => ({}) });
   await assert.rejects(() => runVerdict(baseConfig(), { fetchImpl: failing, log: false }), RouteError);

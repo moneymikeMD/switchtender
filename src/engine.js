@@ -31,6 +31,7 @@ import { loadChart, assessChart, unknownChart } from './chart.js';
 import { fetchEvents, unknownEvents } from './events.js';
 import { fetchTrackwork, unknownTrackwork } from './trackwork.js';
 import { fetchWmata, unknownWmata } from './wmata.js';
+import { SECRETS } from './config.js';
 
 // A vendor that has not answered by now costs its signal, not the verdict.
 // DDOT used to take 6 s on its own before the envelope filter was dropped;
@@ -58,6 +59,8 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  * @param options.trigger    who asked, one of log.TRIGGERS, or null when unknown (CMB-81)
  * @param options.direction  'inbound' (default), or 'outbound' for the trip home,
  *                           which is logged and never spoken (CMB-82)
+ * @param options.keys     service-level API keys; replace config.secrets.keys for every
+ *                           signal, and the logged degraded list is derived from them (CMB-124)
  * @param options.signalTimeoutMs  deadline per optional feed
  * @param options.logTimeoutMs     deadline for the sheet write
  * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
@@ -75,11 +78,16 @@ export async function runVerdict(
     from = 'fork',
     trigger = null,
     direction = 'inbound',
+    keys = null,
     signalTimeoutMs = SIGNAL_TIMEOUT_MS,
     logTimeoutMs = LOG_TIMEOUT_MS,
   } = {},
 ) {
-  const { decision, secrets } = config;
+  const { decision } = config;
+  const secrets = keys
+    ? { keys, degraded: Object.entries(SECRETS).flatMap(([name, { required, signal }]) => (required || keys[name] ? [] : [signal])) }
+    : config.secrets;
+  const logConfig = keys ? { ...config, secrets } : config;
   const nowMs = now.getTime();
   const deadline = () => AbortSignal.timeout(signalTimeoutMs);
 
@@ -168,7 +176,7 @@ export async function runVerdict(
       wmata_reasons: wmata && !wmata.unknown ? (wmata.reasons ?? []).join(' | ') : null,
       trigger,
     };
-    logged = await logVerdict({ now, config, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
+    logged = await logVerdict({ now, config: logConfig, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
   }
 
   const spoken = direction === 'outbound' ? null : speak(verdict);
