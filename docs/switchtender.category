@@ -1665,6 +1665,443 @@
       "m_constraintList": []
     },
     {
+      "m_name": "Switchtender ride pm fixes",
+      "m_description": "CMB-161. On the evening ride's quiet ntfy status 'Sending GPS fixes to find your train.' (sent when a Red candidate leaves gps_after_code), sends a GPS fix about every 20-30 s until the server says done: the train is locked, the ride is over, or the Job's GPS window closed. The Waterfront entrance fence macro only POSTs /ride/start?leg=pm. Set st_key once to the shared secret.",
+      "m_category": "Commute",
+      "m_enabled": true,
+      "m_completed": true,
+      "m_GUID": 0,
+      "aiGenerated": 1,
+      "localVariables": [
+        {
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": false,
+          "isLocalVar": true,
+          "isSecure": false,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "st_url",
+          "m_stringValue": "https://<service>",
+          "m_type": 2,
+          "supportsInput": true,
+          "supportsOutput": true
+        },
+        {
+          "description": "",
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": true,
+          "isLocalVar": true,
+          "isSecure": true,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "st_key",
+          "m_stringValue": "",
+          "m_type": 2,
+          "supportsInput": false,
+          "supportsOutput": true
+        },
+        {
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": false,
+          "isLocalVar": true,
+          "isSecure": false,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "fix_ok",
+          "m_stringValue": "",
+          "m_type": 0,
+          "supportsInput": true,
+          "supportsOutput": true
+        },
+        {
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": false,
+          "isLocalVar": true,
+          "isSecure": false,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "st_fix",
+          "m_stringValue": "",
+          "m_type": 2,
+          "supportsInput": true,
+          "supportsOutput": true
+        },
+        {
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": false,
+          "isLocalVar": true,
+          "isSecure": false,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "st_fix_code",
+          "m_stringValue": "",
+          "m_type": 1,
+          "supportsInput": true,
+          "supportsOutput": true
+        },
+        {
+          "dictionary": {
+            "entries": [],
+            "isArray": false,
+            "variableType": 4,
+            "type": "Dictionary"
+          },
+          "isActionBlockWorkingVar": false,
+          "isLocalVar": true,
+          "isSecure": false,
+          "m_booleanValue": false,
+          "m_decimalValue": 0.0,
+          "m_intValue": 0,
+          "m_name": "st_msg",
+          "m_stringValue": "",
+          "m_type": 2,
+          "supportsInput": true,
+          "supportsOutput": true
+        }
+      ],
+      "m_triggerList": [
+        {
+          "m_classType": "NotificationTrigger",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "",
+          "m_option": 0,
+          "m_packageNameList": [
+            "io.heckel.ntfy"
+          ],
+          "m_applicationNameList": [
+            "ntfy"
+          ],
+          "m_excludeApps": false,
+          "separateTitleAndMessage": true,
+          "titleContent": "Ride status",
+          "matchOptionTitle": 1,
+          "matchOptionMessage": 0,
+          "ignoreCase": false,
+          "m_ignoreOngoing": true,
+          "m_supressMultiples": true
+        }
+      ],
+      "m_actionList": [
+        {
+          "booleanDictionaryKeys": {
+            "keys": []
+          },
+          "dictionaryKeys": [],
+          "dictionaryOrArrayType": -1,
+          "existingManualKeyType": 0,
+          "m_booleanInvert": false,
+          "m_darkMode": -1,
+          "m_doubleRandomMax": 0.0,
+          "m_doubleRandomMin": 0.0,
+          "m_falseLabel": "False",
+          "m_intExpression": false,
+          "m_intRandom": false,
+          "m_intRandomMax": 0,
+          "m_intRandomMin": 0,
+          "m_intValueDecrement": false,
+          "m_intValueIncrement": false,
+          "m_newBooleanValue": false,
+          "m_newDoubleValue": 0.0,
+          "m_newIntValue": 0,
+          "m_newStringValue": "{notification}",
+          "m_trueLabel": "True",
+          "m_userPrompt": false,
+          "m_userPromptEmptyAtStart": false,
+          "m_userPromptPassword": false,
+          "m_userPromptPasswordToggle": false,
+          "m_userPromptShowCancel": true,
+          "m_userPromptStopAfterCancel": true,
+          "m_variable": {
+            "dictionary": {
+              "entries": [],
+              "isArray": false,
+              "variableType": 4,
+              "type": "Dictionary"
+            },
+            "isActionBlockWorkingVar": false,
+            "isLocalVar": true,
+            "isSecure": false,
+            "m_booleanValue": false,
+            "m_decimalValue": 0.0,
+            "m_intValue": 0,
+            "m_name": "st_msg",
+            "m_stringValue": "",
+            "m_type": 2,
+            "supportsInput": true,
+            "supportsOutput": true
+          },
+          "disableLogging": false,
+          "m_SIGUID": -8604291172525730115,
+          "m_classType": "SetVariableAction",
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false
+        },
+        {
+          "m_classType": "IfConditionAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [
+            {
+              "m_classType": "MacroDroidVariableConstraint",
+              "m_SIGUID": 0,
+              "m_constraintList": [],
+              "m_isDisabled": false,
+              "m_isOrCondition": false,
+              "disableLogging": false,
+              "m_comment": "",
+              "m_variable": {
+                "m_name": "st_msg",
+                "m_type": 2,
+                "isLocalVar": true
+              },
+              "m_stringValue": "Sending GPS fixes",
+              "m_stringComparisonType": 1,
+              "m_stringEqual": true,
+              "checkCase": false,
+              "enableRegex": false,
+              "dictionaryType": -1
+            }
+          ],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "Only the evening GPS status starts the loop; every other Ride status is ignored."
+        },
+        {
+          "m_classType": "LoopAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "",
+          "m_option": 4,
+          "timedDurationValue": 60,
+          "timedTimeUnit": 1
+        },
+        {
+          "m_classType": "ForceLocationUpdateAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "",
+          "timeoutSeconds": 15,
+          "blockNextAction": true,
+          "booleanVariableName": "fix_ok"
+        },
+        {
+          "m_classType": "IfConditionAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [
+            {
+              "m_classType": "MacroDroidVariableConstraint",
+              "m_SIGUID": 0,
+              "m_constraintList": [],
+              "m_isDisabled": false,
+              "m_isOrCondition": false,
+              "disableLogging": false,
+              "m_comment": "",
+              "m_variable": {
+                "m_name": "fix_ok",
+                "m_type": 0,
+                "isLocalVar": true
+              },
+              "m_booleanValue": true,
+              "dictionaryType": -1
+            }
+          ],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "HttpRequestAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "",
+          "requestConfig": {
+            "allFilesAccessPath": "",
+            "allowAnyCertificate": false,
+            "basicAuthEnabled": false,
+            "basicAuthPassword": "",
+            "basicAuthUsername": "",
+            "blockNextAction": true,
+            "clientCertEnabled": false,
+            "clientCertKeyStoreDisplayName": "",
+            "clientCertKeyStoreUri": "",
+            "clientCertPassword": "",
+            "contentBodyDynamicFileName": "",
+            "contentBodyFileDisplayName": "",
+            "contentBodyFileUri": "",
+            "contentBodyFolderDisplayName": "",
+            "contentBodyFolderUri": "",
+            "contentBodySource": 0,
+            "contentBodyText": "",
+            "contentType": "",
+            "followRedirects": true,
+            "headerParams": [
+              {
+                "paramName": "X-Switchtender-Key",
+                "paramValue": "{lv=st_key}"
+              }
+            ],
+            "localFileUri": "",
+            "maxTotalDurationSeconds": 20,
+            "prettifyJson": false,
+            "proxyEnabled": false,
+            "proxyHost": "",
+            "proxyPort": 8080,
+            "proxyType": 0,
+            "queryParams": [],
+            "requestTimeOutSeconds": 15,
+            "requestType": 1,
+            "responseVariableName": "st_fix",
+            "returnCodeVariableName": "st_fix_code",
+            "saveResponseAllFilesAccessPath": "",
+            "saveResponseFileName": "",
+            "saveResponseFolderPathDisplayName": "",
+            "saveResponseFolderPathUri": "",
+            "saveResponseType": 1,
+            "saveResponseUseAllFilesAccess": false,
+            "saveReturnCodeToVariable": true,
+            "saveReturnHeadersToVariable": false,
+            "urlToOpen": "{lv=st_url}/ride/fix?leg=pm&lat={last_loc_lat}&lon={last_loc_long}&acc={last_loc_accuracy}&kmh={last_loc_speed_kmh}",
+            "useAllFilesAccess": false,
+            "useLocalFileUri": false,
+            "useStaticContentBodyFile": true
+          }
+        },
+        {
+          "m_classType": "IfConditionAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [
+            {
+              "m_classType": "MacroDroidVariableConstraint",
+              "m_SIGUID": 0,
+              "m_constraintList": [],
+              "m_isDisabled": false,
+              "m_isOrCondition": false,
+              "disableLogging": false,
+              "m_comment": "",
+              "m_variable": {
+                "m_name": "st_fix",
+                "m_type": 2,
+                "isLocalVar": true
+              },
+              "m_stringValue": "\"done\":true",
+              "m_stringComparisonType": 1,
+              "m_stringEqual": true,
+              "checkCase": false,
+              "enableRegex": false,
+              "dictionaryType": -1
+            }
+          ],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "BreakFromLoopAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "EndIfAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "EndIfAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "PauseAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": "",
+          "m_delayInSeconds": 15,
+          "m_delayInMilliSeconds": 0,
+          "m_useAlarm": true
+        },
+        {
+          "m_classType": "EndLoopAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        },
+        {
+          "m_classType": "EndIfAction",
+          "m_SIGUID": 0,
+          "m_constraintList": [],
+          "m_isDisabled": false,
+          "m_isOrCondition": false,
+          "disableLogging": false,
+          "m_comment": ""
+        }
+      ],
+      "m_constraintList": []
+    },
+    {
       "m_name": "Switchtender ride alert",
       "m_description": "CMB-154. On an ntfy push titled exactly 'Ride alert' (the ride topic): drops it if sent more than 60 s ago, otherwise vibrates in the ride pattern until the notification is dismissed (3 min cap). Never speaks.",
       "m_category": "Commute",

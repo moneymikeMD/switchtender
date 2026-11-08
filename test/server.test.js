@@ -683,6 +683,28 @@ test('/ride/fix appends a fix from a JSON body or query params, in the units the
   assert.equal(locked.fixes, 2);
 });
 
+test('an evening start opens no GPS window; the Job opens one, and once it closes a fix is refused with done', async () => {
+  let clock = new Date('2026-10-21T21:45:00Z');
+  const { base, store } = await startRide({ now: () => clock });
+  const start = await (await fetch(`${base}/ride/start?leg=pm`, { method: 'POST', headers })).json();
+  assert.equal(start.started, true);
+  assert.equal(start.gps_from, '2026-10-21T21:45:00.000Z');
+  assert.equal(start.gps_until, start.gps_from, 'nothing to send until the Job asks');
+
+  const ride = store.objects.get('rides/2026-10-21-pm.json').ride;
+  ride.tracking = { phase: 'evening', gps_from: '2026-10-21T22:20:00.000Z', gps_until: '2026-10-21T22:30:00.000Z' };
+  clock = new Date('2026-10-21T22:25:00Z');
+  const inside = await (await fetch(`${base}/ride/fix?leg=pm&lat=42.3954&lon=-71.1425&acc=20`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } })).json();
+  assert.deepEqual({ recorded: inside.recorded, done: inside.done, fixes: inside.fixes }, { recorded: true, done: false, fixes: 1 });
+
+  clock = new Date('2026-10-21T22:30:01Z');
+  const after = await (await fetch(`${base}/ride/fix?leg=pm&lat=42.3960&lon=-71.1400&acc=20`, { method: 'POST', headers: { [KEY_HEADER]: SECRET } })).json();
+  assert.deepEqual(
+    { recorded: after.recorded, done: after.done, locked: after.locked, fixes: after.fixes },
+    { recorded: false, done: true, locked: false, fixes: 1 },
+  );
+});
+
 test('/ride/fix rejects garbage with 400 and answers 404 when there is no ride today', async () => {
   const { base } = await startRide();
   assert.equal((await fetch(`${base}/ride/start?leg=am`, { method: 'POST', headers })).status, 200);

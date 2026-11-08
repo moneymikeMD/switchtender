@@ -144,9 +144,13 @@ alight = "Boylston"
 [ride.pm]
 start = "16:30"
 end = "22:30"
-# The evening fence is at the station entrance, so fixes are wanted only for
-# the few minutes it takes to reach the platform.
-gps_window_mins = 5
+# The evening fence (the entrance of the station the ride home starts at)
+# starts the ride on its own; no GPS is wanted underground. A leg's
+# gps_after_code (WMATA only, second evening leg only) names the station
+# after which the line runs above ground: once a candidate train leaves it,
+# the tracker asks the phone for fixes for gps_window_mins to tell the
+# candidates apart. Without it every candidate alerts.
+gps_window_mins = 10
 
 [[ride.pm.legs]]
 line = "Green"

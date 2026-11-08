@@ -91,3 +91,36 @@ test('boundRight needs the line and the direction; nearAlert is true from the st
   assert.equal(nearAlert(index, { line: 'GR', track: null, seq: null }, g), false);
   assert.equal(nearAlert(index, undefined, g), false);
 });
+
+test('the evening plan: Green Greenbelt-bound alerting at Archives, Red Shady Grove-bound alerting at Rockville, GPS after Grosvenor', () => {
+  const homeGreen = { line: 'Green', board: 'Waterfront', alight: 'Gallery Place', board_code: 'F04', alight_code: 'F01', alert_code: null };
+  const homeRed = {
+    line: 'Red',
+    board: 'Gallery Place',
+    alight: 'Shady Grove',
+    board_code: 'B01',
+    alight_code: 'A15',
+    alert_code: null,
+    gps_after_code: 'A11',
+  };
+  const plan = buildPlan({ leg: 'pm', legs: [homeGreen, homeRed], index, timeZone: TZ });
+  const [g, r] = plan.legs;
+  assert.deepEqual({ alert: g.alert, dir: g.dir, gpsAfter: g.gpsAfter }, { alert: 'F02', dir: 1, gpsAfter: null });
+  assert.deepEqual({ alert: r.alert, dir: r.dir, gpsAfter: r.gpsAfter }, { alert: 'A14', dir: -1, gpsAfter: 'A11' });
+
+  const departed = Date.parse('2026-10-21T21:47:20Z');
+  assert.equal(alertText(plan, 0, departed), "Next stop Gallery Place. Transfer to Red. You're on the 5:47 from Waterfront.");
+  assert.equal(alertText(plan, 1, Date.parse('2026-10-21T22:05:00Z')), "Next stop Shady Grove. You're on the 6:05 from Gallery Place.");
+  assert.equal(lockText(plan, Date.parse('2026-10-21T22:05:00Z'), 1), 'Tracking the 6:05 from Gallery Place');
+
+  const bad = (legs, leg, re) =>
+    assert.throws(
+      () => buildPlan({ leg, legs, index, timeZone: TZ }),
+      (e) => e instanceof ConfigError && re.test(e.message),
+    );
+  bad([homeGreen, { ...homeRed, gps_after_code: 'A14' }], 'pm', /gps_after_code A14 is not between B01 and the alert station A14/);
+  bad([homeGreen, { ...homeRed, gps_after_code: 'F03' }], 'pm', /gps_after_code F03 is not between/);
+  bad([{ ...homeGreen, gps_after_code: 'F03' }, homeRed], 'pm', /ride\.pm\.legs\[0\]\.gps_after_code is read only on the second evening leg/);
+  bad([red, { ...green, gps_after_code: 'F02' }], 'am', /ride\.am\.legs\[1\]\.gps_after_code is read only/);
+  assert.equal(buildPlan({ leg: 'pm', legs: [homeGreen, { ...homeRed, gps_after_code: 'B01' }], index }).legs[1].gpsAfter, 'B01');
+});
