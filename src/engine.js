@@ -65,7 +65,7 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  * @param options.logTimeoutMs     deadline for the sheet write
  * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
  *          where spoken is null on the outbound trip,
- *          where events and trackwork are null when not consulted (no venues, no lines),
+ *          where events and trackwork are null when not consulted (no venues, no lines, or switched off in [signals]),
  *          where logged is { ok, error } or null when nothing was attempted.
  * @throws RouteError when the onward options cannot be computed.
  */
@@ -98,20 +98,20 @@ export async function runVerdict(
   // fetchEvents routes each venue to its provider and copes with a missing
   // Ticketmaster key itself, because mlb venues need no key at all. Planned
   // track work (CMB-26) needs only the configured lines. No venues or no
-  // lines means the signal is not attempted and stays null, which decide()
-  // reads as "not consulted", not "clear".
+  // lines, or a switched-off [signals] entry, means the signal is not attempted
+  // and stays null, which decide() reads as "not consulted", not "clear".
   // Outbound, the evening departure is now, not the assumed one.
   const eventsConfig =
     direction === 'outbound'
       ? { ...config, decision: { ...decision, assumed_evening_departure: localTime(now, config.route.timezone).timestamp.slice(11, 16) } }
       : config;
   const eventsPromise =
-    (config.venues ?? []).length > 0
+    (config.signals?.events ?? true) && (config.venues ?? []).length > 0
       ? guardWhole(fetchEvents(eventsConfig, secrets.keys.EVENTS_API_KEY ?? null, fetchImpl, { now: nowMs, signal: deadline() }), unknownEvents)
       : Promise.resolve(null);
   const lines = config.transit?.lines ?? [];
   const trackworkPromise =
-    lines.length > 0
+    (config.signals?.trackwork ?? true) && lines.length > 0
       ? guardWhole(
           fetchTrackwork(lines, fetchImpl, { now: nowMs, timeZone: config.route.timezone, log: (line) => console.error(line), signal: deadline() }),
           unknownTrackwork,

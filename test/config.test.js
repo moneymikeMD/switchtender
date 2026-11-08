@@ -310,3 +310,28 @@ test('buildConfig names a transposed coordinate', () => {
 test('buildConfig rejects a non-object', () => {
   assert.throws(() => buildConfig(null), ConfigError);
 });
+
+test('[signals] defaults every switch to true and accepts explicit booleans (CMB-126)', () => {
+  assert.deepEqual(parseConfig(exampleText).signals, { events: true, trackwork: true });
+  const raw = parse(exampleText);
+  assert.deepEqual(buildConfig({ ...raw, signals: { events: false } }).signals, { events: false, trackwork: true });
+  const built = buildConfig({ ...raw, signals: { events: false, trackwork: false } });
+  assert.deepEqual(buildConfig(built).signals, { events: false, trackwork: false });
+});
+
+test('[signals] rejects an unknown key or a non-boolean, naming the key (CMB-126)', () => {
+  const raw = parse(exampleText);
+  assert.throws(
+    () => buildConfig({ ...raw, signals: { wmata: false } }),
+    (e) => e instanceof ConfigError && /unknown key "wmata"/.test(e.message),
+  );
+  assert.throws(
+    () => buildConfig({ ...raw, signals: { events: 'no' } }),
+    (e) => e instanceof ConfigError && /"signals.events" should be boolean/.test(e.message),
+  );
+  assert.throws(
+    () => buildConfig({ ...raw, signals: { trackwork: 0 } }),
+    (e) => e instanceof ConfigError && /"signals.trackwork"/.test(e.message),
+  );
+  assert.throws(() => buildConfig({ ...raw, signals: true }), ConfigError);
+});

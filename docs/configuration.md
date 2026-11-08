@@ -81,6 +81,15 @@ On that last point: a morning verdict commits you to how you get home, so a sche
 `"RED"` all become `Red`); a line the page does not list is a startup error, because a misspelt line would otherwise report "no track work" on every run. Leave the list empty and the signal stays
 quiet.
 
+### `[signals]` (optional)
+
+| Key | Meaning |
+| --- | --- |
+| `events` | Venue events (Ticketmaster and MLB). Default `true`. `false` skips the fetch even with venues configured. |
+| `trackwork` | The wmata.com planned track-work scrape. Default `true`. `false` skips it even with `[transit] lines` set; WMATA rail alerts still run on those lines. |
+
+A switched-off signal is never fetched and reads as not consulted (`null`), never as clear. An unknown key or a non-boolean value is a config error naming the key.
+
 ### `[ride]` (optional)
 
 Metro ride alerts (CMB-148, CMB-151). Leave the whole block out and the three `/ride/*` endpoints answer 503. Present, it takes:
