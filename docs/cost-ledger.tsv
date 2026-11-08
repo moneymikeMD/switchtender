@@ -1,0 +1,2 @@
+date	wave	turns	cost_usd	model_mix	orchestrator_model	orchestrator_effort	orchestrator_turns	orchestrator_usd	worker_turns	worker_usd	notes
+2026-11-08T15:00:04Z	2026-11-08-sun	201	8.3900	opus-5-5:98,sonnet-5-5:103	claude-opus-5-5	medium	98	5.1800	103	3.2100	Sprint 2026-11-08 Sun: CMB-122 124 126 128 130 133 159 merged (PRs 73-80), 7 sonnet worktree workers. Worker cost priced at the claude-sonnet-5 row; no claude-sonnet-5-5 price row exists, so worker_usd is UNVERIFIED. Snapshot before wrap-up turns.
