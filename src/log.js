@@ -29,8 +29,8 @@
 // must not keep Google's raw durations or geometry. derivedRow() is buildRow
 // as an object keyed by column, minus DERIVED_DROPPED_COLUMNS: every seconds
 // or metres figure read straight from Routes (leg and walk durations, drive
-// distance, congestion metres) and their rounded-minute copies. No polyline
-// is ever a column. The verdict's own minutes, margins, scores, flags,
+// distance, congestion metres) and their rounded-minute copies, including the
+// verdict's trip minutes. No polyline is ever a column. The margins, scores, flags,
 // reasons, trigger, direction, measured_from and timestamps are kept.
 //
 // Authentication: no key files on disk. The logger takes an access token
@@ -281,6 +281,8 @@ export const DERIVED_DROPPED_COLUMNS = Object.freeze([
   'congestion_total_metres',
   'drive_walk_seconds',
   'transit_walk_seconds',
+  'verdict_drive_minutes',
+  'verdict_transit_minutes',
 ]);
 
 /**
