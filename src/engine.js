@@ -32,6 +32,7 @@ import { fetchEvents, unknownEvents } from './events.js';
 import { fetchTrackwork, unknownTrackwork } from './trackwork.js';
 import { fetchWmata, unknownWmata } from './wmata.js';
 import { SECRETS } from './config.js';
+import { buildAttributions } from './attributions.js';
 
 // A vendor that has not answered by now costs its signal, not the verdict.
 // DDOT used to take 6 s on its own before the envelope filter was dropped;
@@ -66,7 +67,8 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  *                           false; options.log === false still skips it (CMB-128)
  * @param options.signalTimeoutMs  deadline per optional feed
  * @param options.logTimeoutMs     deadline for the sheet write or the sink
- * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
+ * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged, attributions }
+ *          where attributions is [{ source, text }], Google first, then one entry per signal that returned data (see attributions.js),
  *          where spoken is null on the outbound trip,
  *          where events and trackwork are null when not consulted (no venues, no lines, or switched off in [signals]),
  *          where logged is { ok, error } or null when nothing was attempted.
@@ -187,5 +189,6 @@ export async function runVerdict(
   }
 
   const spoken = direction === 'outbound' ? null : speak(verdict);
-  return { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged };
+  const attributions = buildAttributions({ incidents, closures, maryland, events, trackwork, wmata, venues: config.venues });
+  return { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged, attributions };
 }

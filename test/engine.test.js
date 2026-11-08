@@ -456,3 +456,46 @@ test('log: false skips the sink', async () => {
   assert.equal(calls, 0);
   assert.equal(result.logged, null);
 });
+
+function feedFetch(seen = []) {
+  const base = stubFetch(seen);
+  return async (url, init) => {
+    const u = String(url);
+    const ok = (body) => ({ ok: true, json: async () => body, text: async () => JSON.stringify(body) });
+    if (u.includes('tomtom.com')) return ok({ incidents: [] });
+    if (u.startsWith('https://maps2.dcgis.dc.gov/')) {
+      return ok(u.includes('outStatistics') ? { features: [{ attributes: { newest: SIGNALS_NOW.getTime() } }] } : { features: [] });
+    }
+    if (u.startsWith('https://api.wmata.com/')) return ok({ Incidents: [] });
+    return base(url, init);
+  };
+}
+
+const sources = (result) => result.attributions.map((a) => a.source);
+
+test('attributions list Google and every signal that returned data (CMB-133)', async () => {
+  const config = baseConfig({ traffic: true });
+  config.transit.lines = ['Red'];
+  config.secrets.keys.TRANSIT_API_KEY = 'transit-key';
+  const result = await runVerdict(config, { fetchImpl: feedFetch(), log: false, now: SIGNALS_NOW });
+  assert.equal(sources(result)[0], 'Google');
+  for (const name of ['TomTom', 'DDOT', 'WMATA']) assert.ok(sources(result).includes(name), name);
+  assert.ok(!sources(result).includes('CHART'), 'CHART failed, so it is not credited');
+  for (const entry of result.attributions) {
+    assert.equal(typeof entry.source, 'string');
+    assert.equal(typeof entry.text, 'string');
+  }
+});
+
+test('attributions carry no events or track-work entry when those signals are off (CMB-133)', async () => {
+  const config = baseConfig({ traffic: true });
+  config.transit.lines = ['Red'];
+  config.signals = { events: false, trackwork: false };
+  const result = await runVerdict(config, { fetchImpl: feedFetch(), log: false, now: SIGNALS_NOW });
+  assert.ok(!sources(result).some((s) => /Ticketmaster|MLB|track work/.test(s)));
+});
+
+test('an unconsulted or unknown signal adds no attribution entry (CMB-133)', async () => {
+  const result = await runVerdict(baseConfig(), { fetchImpl: stubFetch(), log: false, now: SIGNALS_NOW });
+  assert.deepEqual(sources(result), ['Google']);
+});
