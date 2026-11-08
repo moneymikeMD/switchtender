@@ -210,8 +210,7 @@ const byColumn = (columns) => async (url) => {
   return typeof answer === 'number' ? jsonResponse(answer, { error: { message: `status ${answer}` } }) : jsonResponse(200, answer);
 };
 
-test('trigger is the last column, and a poll sample is one of the known triggers', () => {
-  assert.equal(FULL_HEADER.at(-1), 'trigger');
+test('trigger sits at column BM, and a poll sample is one of the known triggers', () => {
   assert.equal(FULL_HEADER.indexOf('trigger'), 64, 'column BM on the live tab');
   assert.deepEqual(TRIGGERS, ['phone', 'schedule', 'poll']);
 });

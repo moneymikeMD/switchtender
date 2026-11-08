@@ -90,6 +90,21 @@ quiet.
 
 A switched-off signal is never fetched and reads as not consulted (`null`), never as clear. An unknown key or a non-boolean value is a config error naming the key.
 
+### Track-work model (environment, shadow, CMB-159)
+
+An optional decision model scores each active track-work notice: does it slow or replace trains between the rider's boarding station and destination, in their direction? The answer is logged only
+(`trackwork_model_p`, `trackwork_penalty_shadow` = 0.2 x the largest p, or the flat 0.2 when any window failed, and `trackwork_model_error`); the applied penalty stays the flat 0.2 and no verdict or
+spoken text changes. All three variables are read at call time and never logged.
+
+| Variable | Meaning |
+| --- | --- |
+| `TRACKWORK_MODEL_URL` | Gateway base URL; the request is `POST <url>/v1/systemone`. Unset means the model is not consulted: no request, columns empty. |
+| `TRACKWORK_MODEL_KEY` | Bearer key for the gateway. |
+| `TRACKWORK_MODEL` | Model name. Default `jev`. |
+
+The gateway resolves only on the home LAN, so Cloud Run cannot reach it today. These variables are not in `scripts/deploy-cloud-run.sh` or Secret Manager; how production reaches the gateway is an open
+owner decision.
+
 ### `[ride]` (optional)
 
 Metro ride alerts (CMB-148, CMB-151). Leave the whole block out and the three `/ride/*` endpoints answer 503. Present, it takes:

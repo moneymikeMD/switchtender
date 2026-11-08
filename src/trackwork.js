@@ -29,6 +29,7 @@
 // quietly returns empty is worse than one that says it could not read.
 
 import { getText } from './http.js';
+import { shadowTrackwork } from './trackwork-model.js';
 
 export const TRACKWORK_URL = 'https://www.wmata.com/ride/planned-track-work.html';
 
@@ -418,6 +419,12 @@ export function assessTrackwork(windows, lines, { now = Date.now(), timeZone = D
   };
 }
 
+/** Windows on `lines` covering now: the ones assessTrackwork counts as active. */
+export function activeWindows(windows, lines, { now = Date.now() } = {}) {
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  return (windows ?? []).filter((w) => intersects(w, Array.isArray(lines) ? lines : []) && w.startsAt <= nowMs && w.endsAt >= nowMs);
+}
+
 /**
  * Rule 5, first test, for a page with no publication date: the source is
  * live if any window is still in the future or ended within STALE_AFTER_MS.
@@ -435,9 +442,15 @@ export function sourceIsStale(windows, now = Date.now()) {
  * failure is the unknown shape with a reason naming the failure class; an
  * unreadable table is unknown too, and distinct from a readable table with
  * no rows (active 0). Windows whose year was inferred as not the current
- * one are reported through the optional `log` callback, one line each.
+ * one are reported through the optional `log` callback, one line each. With
+ * `trip` and TRACKWORK_MODEL_URL set, the result also carries `model`, the
+ * shadow scoring of the active windows (trackwork-model.js); it changes no other field.
  */
-export async function fetchTrackwork(lines, fetchImpl = fetch, { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null, signal } = {}) {
+export async function fetchTrackwork(
+  lines,
+  fetchImpl = fetch,
+  { now = Date.now(), timeZone = DEFAULT_TIME_ZONE, log = null, signal, trip = null, env = process.env } = {},
+) {
   try {
     const { text: html, error } = await getText(TRACKWORK_URL, { fetchImpl, signal });
     if (error) return unknown(error);
@@ -453,7 +466,9 @@ export async function fetchTrackwork(lines, fetchImpl = fetch, { now = Date.now(
         }
       }
     }
-    return assessTrackwork(windows, lines, { now, timeZone });
+    const assessed = assessTrackwork(windows, lines, { now, timeZone });
+    const model = trip ? await shadowTrackwork(activeWindows(windows, lines, { now }), { ...trip, lines }, { fetchImpl, signal, env }) : null;
+    return model ? { ...assessed, model } : assessed;
   } catch (cause) {
     return unknown(`unexpected error (${cause?.name ?? 'Error'})`);
   }

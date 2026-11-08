@@ -127,6 +127,10 @@ export const EXTRA_COLUMNS = Object.freeze([
   'wmata_reasons',
   // Added 2026-09-28 (CMB-81): who asked for the verdict. Empty is unknown.
   'trigger',
+  // Added 2026-11-08 (CMB-159): shadow scoring of track-work notices; the applied penalty stays flat.
+  'trackwork_model_p',
+  'trackwork_penalty_shadow',
+  'trackwork_model_error',
 ]);
 
 export const FULL_HEADER = Object.freeze([...HEADER, ...EXTRA_COLUMNS]);

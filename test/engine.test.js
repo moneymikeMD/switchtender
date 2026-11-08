@@ -300,6 +300,80 @@ test("a vendor answer that breaks a module is that module's unknown, while routi
   assert.equal(result.trackwork.upcoming, 1);
 });
 
+const MODEL_PAGE =
+  '<table><tr><th>Start</th><th>End</th><th>Line</th><th>Impact</th></tr><tr><td>Sept. 16</td><td>Sept. 18</td><td>Red</td><td>Single tracking</td></tr></table>';
+const GATEWAY_ANSWER = {
+  model: 'jev-1.14.0',
+  answers: { affects: { type: 'choice', choice: 'no', confidence: 0.16, probabilities: { yes: 0.42, no: 0.58 } } },
+};
+
+async function runWithModel(gateway) {
+  const config = baseConfig();
+  config.transit.lines = ['Red'];
+  const inner = stubFetch();
+  const gatewayCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('wmata.com')) return { ok: true, status: 200, text: async () => MODEL_PAGE };
+    if (u.startsWith('https://gateway.example.test/')) {
+      gatewayCalls.push(init);
+      return gateway();
+    }
+    return inner(url, init);
+  };
+  const rows = [];
+  const result = await runVerdict(config, { fetchImpl, now: new Date('2026-09-17T12:00:00Z'), sink: (row) => rows.push(row) });
+  return { result, row: rows[0], gatewayCalls };
+}
+
+async function withEnv(env, fn) {
+  const saved = {};
+  for (const k of ['TRACKWORK_MODEL_URL', 'TRACKWORK_MODEL_KEY', 'TRACKWORK_MODEL']) saved[k] = process.env[k];
+  for (const k of Object.keys(saved)) delete process.env[k];
+  Object.assign(process.env, env);
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+const GATEWAY_ENV = { TRACKWORK_MODEL_URL: 'https://gateway.example.test', TRACKWORK_MODEL_KEY: 'k-123' };
+const okGateway = () => ({ ok: true, status: 200, json: async () => GATEWAY_ANSWER });
+
+test('track-work shadow: the model p and shadow penalty are logged while verdict, confidence and spoken match the run without it (CMB-159)', async () => {
+  const off = await withEnv({}, () => runWithModel(okGateway));
+  const on = await withEnv(GATEWAY_ENV, () => runWithModel(okGateway));
+  assert.equal(on.gatewayCalls.length, 1);
+  assert.equal(off.gatewayCalls.length, 0);
+  assert.equal(on.row.trackwork_model_p, '0.42');
+  assert.equal(on.row.trackwork_penalty_shadow, String(0.2 * 0.42));
+  assert.equal(on.row.trackwork_model_error, '');
+  assert.equal(off.row.trackwork_model_p, '');
+  assert.equal(off.row.trackwork_penalty_shadow, '');
+  assert.deepEqual(on.result.verdict, off.result.verdict);
+  assert.equal(on.result.spoken, off.result.spoken);
+});
+
+for (const [name, gateway, reason] of [
+  ['a 500', () => ({ ok: false, status: 500, json: async () => ({}) }), 'HTTP 500'],
+  ['a timeout', () => Promise.reject(Object.assign(new Error('x'), { name: 'TimeoutError' })), 'network error (TimeoutError)'],
+  ['a malformed body', () => ({ ok: true, status: 200, json: async () => ({ answers: {} }) }), 'malformed answer'],
+]) {
+  test(`track-work shadow: ${name} from the gateway logs the flat shadow penalty and a reason, with the verdict unchanged (CMB-159)`, async () => {
+    const off = await withEnv({}, () => runWithModel(okGateway));
+    const on = await withEnv(GATEWAY_ENV, () => runWithModel(gateway));
+    assert.equal(on.row.trackwork_model_p, '');
+    assert.equal(on.row.trackwork_penalty_shadow, '0.2');
+    assert.equal(on.row.trackwork_model_error, reason);
+    assert.deepEqual(on.result.verdict, off.result.verdict);
+    assert.equal(on.result.spoken, off.result.spoken);
+  });
+}
+
 test('from=origin measures both legs from home, times the train off the lot arrival, and says so (CMB-29, CMB-30, CMB-32)', async () => {
   const config = baseConfig();
   const now = new Date('2026-09-17T12:00:00Z');
