@@ -135,6 +135,29 @@ function logBlock(raw) {
   return { enabled, sheet_id, sheet_tab, arrivals_tab };
 }
 
+export const SIGNAL_SWITCHES = ['events', 'trackwork'];
+
+function signalsBlock(raw) {
+  const block = raw.signals ?? {};
+  if (typeof block !== 'object' || block === null || Array.isArray(block)) {
+    throw new ConfigError('config: [signals] should be a table');
+  }
+  for (const key of Object.keys(block)) {
+    if (!SIGNAL_SWITCHES.includes(key)) {
+      throw new ConfigError(`config: signals has unknown key "${key}"; a switch is one of ${SIGNAL_SWITCHES.join(', ')}`);
+    }
+  }
+  const out = {};
+  for (const key of SIGNAL_SWITCHES) {
+    const value = block[key] ?? true;
+    if (typeof value !== 'boolean') {
+      throw new ConfigError(`config: key "signals.${key}" should be boolean, got ${typeof value}`);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 // Where the deployed service answers. Optional and never printed by the
 // service; it exists so the real hostname lives in the gitignored config
 // rather than in this public repo's docs or macro export.
@@ -303,6 +326,7 @@ export function buildConfig(raw) {
     service: serviceBlock(raw),
     log,
     transit: transitBlock(raw),
+    signals: signalsBlock(raw),
     ride,
     trigger: { lead_miles: must(raw, 'trigger.lead_miles', 'number') },
     decision: {

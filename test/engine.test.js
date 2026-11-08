@@ -357,3 +357,53 @@ test('a separate parking spot routes the drive there and adds the walk to the do
   assert.equal(result.verdict.driveMinutes, 50);
   assert.equal(result.options.parkingLabel, 'garage');
 });
+
+const hosts = (seen) => seen.map((u) => new URL(u).host);
+const SIGNALS_NOW = new Date('2026-09-17T12:00:00Z');
+
+test('signals.events = false never fetches Ticketmaster or MLB and reads as not consulted (CMB-126)', async () => {
+  const config = baseConfig();
+  config.transit.lines = ['Red'];
+  config.signals = { events: false, trackwork: true };
+  assert.ok(config.venues.some((v) => v.provider === 'mlb') && config.venues.some((v) => v.provider === 'ticketmaster'));
+  const seen = [];
+  const result = await runVerdict(config, { fetchImpl: stubFetch(seen), log: false, now: SIGNALS_NOW });
+  assert.equal(result.events, null);
+  assert.ok(!hosts(seen).some((h) => h === 'statsapi.mlb.com' || h.endsWith('ticketmaster.com')), 'no events host was contacted');
+  assert.ok(hosts(seen).includes('www.wmata.com'), 'track work is still consulted');
+});
+
+test('signals.trackwork = false skips the scrape but WMATA rail alerts are still consulted (CMB-126)', async () => {
+  const config = baseConfig();
+  config.transit.lines = ['Red'];
+  config.signals = { events: true, trackwork: false };
+  config.secrets.keys.TRANSIT_API_KEY = 'transit-key';
+  const seen = [];
+  const result = await runVerdict(config, { fetchImpl: stubFetch(seen), log: false, now: SIGNALS_NOW });
+  assert.equal(result.trackwork, null);
+  assert.ok(!hosts(seen).includes('www.wmata.com'), 'the track-work page was not fetched');
+  assert.ok(hosts(seen).includes('api.wmata.com'), 'rail alerts were fetched');
+  assert.notEqual(result.wmata, null);
+});
+
+test('the verdict choice is the same with signals on and off when there is no event or track work (CMB-126)', async () => {
+  const run = async (signals) => {
+    const config = baseConfig();
+    config.transit.lines = ['Red'];
+    config.signals = signals;
+    const inner = stubFetch();
+    const fetchImpl = async (url, init = {}) => {
+      const u = String(url);
+      if (u.startsWith('https://statsapi.mlb.com/')) return { ok: true, status: 200, json: async () => ({ dates: [] }) };
+      if (u.startsWith('https://app.ticketmaster.com/')) return { ok: true, status: 200, json: async () => ({}) };
+      if (u.startsWith('https://www.wmata.com/')) return { ok: true, status: 200, text: async () => '<table></table>' };
+      return inner(url, init);
+    };
+    return runVerdict(config, { fetchImpl, log: false, now: SIGNALS_NOW });
+  };
+  const on = await run({ events: true, trackwork: true });
+  const off = await run({ events: false, trackwork: false });
+  assert.equal(on.verdict.choice, off.verdict.choice);
+  assert.equal(off.events, null);
+  assert.equal(off.trackwork, null);
+});
