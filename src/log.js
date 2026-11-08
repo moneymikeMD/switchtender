@@ -25,6 +25,14 @@
 // FULL_HEADER (the live tab was written when there were six extras), and a
 // header that is anything else stops the append rather than misalign it.
 //
+// Derived row (CMB-128): the paid service stores through an injected sink and
+// must not keep Google's raw durations or geometry. derivedRow() is buildRow
+// as an object keyed by column, minus DERIVED_DROPPED_COLUMNS: every seconds
+// or metres figure read straight from Routes (leg and walk durations, drive
+// distance, congestion metres) and their rounded-minute copies. No polyline
+// is ever a column. The verdict's own minutes, margins, scores, flags,
+// reasons, trigger, direction, measured_from and timestamps are kept.
+//
 // Authentication: no key files on disk. The logger takes an access token
 // provider; see tokenFromEnvOrMetadata for the two supported sources.
 
@@ -255,6 +263,52 @@ export function buildRow({ now = new Date(), config, options, incidents = null, 
 
   const header = headerFor(extras);
   return header.map((name) => cell(name in named ? named[name] : extras?.[name]));
+}
+
+/** Columns derivedRow leaves out: raw Routes durations and distances, their minute copies, and congestion metres. */
+export const DERIVED_DROPPED_COLUMNS = Object.freeze([
+  'drive_minutes',
+  'drive_seconds',
+  'transit_minutes',
+  'transit_seconds',
+  'park_drive_seconds',
+  'park_buffer_seconds',
+  'park_transit_seconds',
+  'drive_distance_metres',
+  'congestion_normal_metres',
+  'congestion_slow_metres',
+  'congestion_jam_metres',
+  'congestion_total_metres',
+  'drive_walk_seconds',
+  'transit_walk_seconds',
+]);
+
+/**
+ * buildRow's input, returned as { column: cell } without DERIVED_DROPPED_COLUMNS.
+ * Holds derived and first-party values only; frozen HEADER order is not touched.
+ */
+export function derivedRow(input) {
+  const row = buildRow(input);
+  return Object.fromEntries(FULL_HEADER.flatMap((name, i) => (DERIVED_DROPPED_COLUMNS.includes(name) ? [] : [[name, row[i]]])));
+}
+
+/**
+ * Hand the derived row to `sink`. Never throws; a throw, rejection or stall
+ * past `signal` returns { ok: false, error }.
+ */
+export async function sinkVerdict({ sink, signal, ...input }) {
+  try {
+    const row = derivedRow(input);
+    const aborted = new Promise((_, reject) => {
+      const fail = () => reject(signal.reason ?? new Error('aborted'));
+      if (signal?.aborted) fail();
+      else signal?.addEventListener('abort', fail, { once: true });
+    });
+    await Promise.race([Promise.resolve().then(() => sink(row)), aborted]);
+    return { ok: true, error: null };
+  } catch (cause) {
+    return { ok: false, error: `sink (${cause?.name ?? 'Error'}): ${cause?.message ?? cause}` };
+  }
 }
 
 // ---------------------------------------------------------------------------

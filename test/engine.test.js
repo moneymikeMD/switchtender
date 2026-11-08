@@ -407,3 +407,52 @@ test('the verdict choice is the same with signals on and off when there is no ev
   assert.equal(off.events, null);
   assert.equal(off.trackwork, null);
 });
+
+test('opts.sink receives the derived row once, with no Sheets request, even when [log] is off (CMB-128)', async () => {
+  const seen = [];
+  const rows = [];
+  const result = await runVerdict(baseConfig(), {
+    fetchImpl: stubFetch(seen),
+    now: new Date('2026-09-17T12:00:00Z'),
+    sink: (row) => rows.push(row),
+    trigger: 'phone',
+  });
+  assert.deepEqual(result.logged, { ok: true, error: null });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].choice, result.verdict.choice);
+  assert.equal(rows[0].trigger, 'phone');
+  assert.equal('drive_seconds' in rows[0], false);
+  assert.equal(
+    seen.some((u) => u.includes('sheets.googleapis.com') || u.includes('metadata.google.internal')),
+    false,
+  );
+});
+
+test('a sink that throws, rejects or stalls is reported in logged and the verdict still returns (CMB-128)', async () => {
+  const now = new Date('2026-09-17T12:00:00Z');
+  const thrown = await runVerdict(baseConfig(), {
+    fetchImpl: stubFetch(),
+    now,
+    sink: () => {
+      throw new Error('boom');
+    },
+  });
+  assert.equal(thrown.logged.ok, false);
+  assert.match(thrown.logged.error, /boom/);
+  assert.ok(thrown.verdict.choice);
+
+  const rejected = await runVerdict(baseConfig(), { fetchImpl: stubFetch(), now, sink: async () => Promise.reject(new Error('nope')) });
+  assert.equal(rejected.logged.ok, false);
+
+  const stalled = await runVerdict(baseConfig(), { fetchImpl: stubFetch(), now, sink: () => new Promise(() => {}), logTimeoutMs: 50 });
+  assert.equal(stalled.logged.ok, false);
+  assert.match(stalled.logged.error, /TimeoutError/);
+  assert.ok(stalled.verdict.choice);
+});
+
+test('log: false skips the sink', async () => {
+  let calls = 0;
+  const result = await runVerdict(baseConfig(), { fetchImpl: stubFetch(), log: false, sink: () => calls++ });
+  assert.equal(calls, 0);
+  assert.equal(result.logged, null);
+});

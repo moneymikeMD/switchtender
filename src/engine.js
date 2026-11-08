@@ -25,7 +25,7 @@
 import { computeOptions } from './routes.js';
 import { decide, speak } from './verdict.js';
 import { loadIncidents, assessTrajectory, unknownIncidents } from './incidents.js';
-import { logVerdict, localTime } from './log.js';
+import { logVerdict, sinkVerdict, localTime } from './log.js';
 import { loadClosures, assessClosures, unknownClosures } from './closures.js';
 import { loadChart, assessChart, unknownChart } from './chart.js';
 import { fetchEvents, unknownEvents } from './events.js';
@@ -61,8 +61,11 @@ const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexp
  *                           which is logged and never spoken (CMB-82)
  * @param options.keys     service-level API keys; replace config.secrets.keys for every
  *                           signal, and the logged degraded list is derived from them (CMB-124)
+ * @param options.sink     async (row) => void. When given it receives log.derivedRow's object
+ *                           instead of the Sheets write, called even when config.log.enabled is
+ *                           false; options.log === false still skips it (CMB-128)
  * @param options.signalTimeoutMs  deadline per optional feed
- * @param options.logTimeoutMs     deadline for the sheet write
+ * @param options.logTimeoutMs     deadline for the sheet write or the sink
  * @returns { options, incidents, closures, maryland, events, trackwork, wmata, verdict, spoken, logged }
  *          where spoken is null on the outbound trip,
  *          where events and trackwork are null when not consulted (no venues, no lines, or switched off in [signals]),
@@ -79,6 +82,7 @@ export async function runVerdict(
     trigger = null,
     direction = 'inbound',
     keys = null,
+    sink = null,
     signalTimeoutMs = SIGNAL_TIMEOUT_MS,
     logTimeoutMs = LOG_TIMEOUT_MS,
   } = {},
@@ -147,7 +151,7 @@ export async function runVerdict(
   // become the EXTRA_COLUMNS, in that order. A failed write is reported,
   // never thrown; a stalled one is cut off by the deadline.
   let logged = null;
-  if (log && config.log.enabled) {
+  if (log && (sink || config.log.enabled)) {
     const extras = {
       closures_active: closures.active,
       closures_source_live: closures.sourceLive,
@@ -176,7 +180,10 @@ export async function runVerdict(
       wmata_reasons: wmata && !wmata.unknown ? (wmata.reasons ?? []).join(' | ') : null,
       trigger,
     };
-    logged = await logVerdict({ now, config: logConfig, options, incidents, verdict, extras, fetchImpl, signal: AbortSignal.timeout(logTimeoutMs) });
+    const signal = AbortSignal.timeout(logTimeoutMs);
+    logged = sink
+      ? await sinkVerdict({ sink, now, config: logConfig, options, incidents, verdict, extras, signal })
+      : await logVerdict({ now, config: logConfig, options, incidents, verdict, extras, fetchImpl, signal });
   }
 
   const spoken = direction === 'outbound' ? null : speak(verdict);

@@ -11,6 +11,8 @@ import {
   FULL_HEADER,
   headerFor,
   buildRow,
+  derivedRow,
+  DERIVED_DROPPED_COLUMNS,
   localTime,
   appendRow,
   ensureHeader,
