@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.11.0](https://github.com/moneymikeMD/switchtender/compare/v1.10.0...v1.11.0) (2026-11-08)
+
+
+### Features
+
+* [signals] switches turn events and track work off per deployment (CMB-126) ([#77](https://github.com/moneymikeMD/switchtender/issues/77)) ([68d3a17](https://github.com/moneymikeMD/switchtender/commit/68d3a1769db42300281938c7cebf2ca609540838))
+* export buildConfig and a side-effect-free package entry (CMB-122) ([#75](https://github.com/moneymikeMD/switchtender/issues/75)) ([c568f92](https://github.com/moneymikeMD/switchtender/commit/c568f926f7b93dacb178a716c26c2d5fe3de2f09))
+* export findFork and approachPoint from the package entry (CMB-130) ([#76](https://github.com/moneymikeMD/switchtender/issues/76)) ([926dffa](https://github.com/moneymikeMD/switchtender/commit/926dffad524aafab5a1eb69eff4fef94954bedab))
+* findFork and approachPoint locate the fork and the wake-up point (CMB-130) ([#74](https://github.com/moneymikeMD/switchtender/issues/74)) ([1ad8c7c](https://github.com/moneymikeMD/switchtender/commit/1ad8c7c2f686ce2f4b04f2c221117f73f34f0683))
+* runVerdict accepts service-level keys via opts.keys (CMB-124) ([#73](https://github.com/moneymikeMD/switchtender/issues/73)) ([f8e3e81](https://github.com/moneymikeMD/switchtender/commit/f8e3e81b0493cedf6b4214f71b9f386b8c463cc6))
+* runVerdict returns an attributions list of the sources consulted (CMB-133) ([#79](https://github.com/moneymikeMD/switchtender/issues/79)) ([24aeba7](https://github.com/moneymikeMD/switchtender/commit/24aeba78b6d8e52e389bd6b355dca0004f01f3b5))
+* runVerdict sends the derived row to opts.sink (CMB-128) ([#78](https://github.com/moneymikeMD/switchtender/issues/78)) ([4911cb4](https://github.com/moneymikeMD/switchtender/commit/4911cb49b5f16e0c56c15b4683b0e3882ad538ca))
+* shadow-score track-work notices with the decision model, logged beside the flat penalty (CMB-159) ([#80](https://github.com/moneymikeMD/switchtender/issues/80)) ([dc10b40](https://github.com/moneymikeMD/switchtender/commit/dc10b40e3cf04335baf1f762416ce4dd44a3f038))
+* track the evening ride from the Waterfront fence (CMB-161) ([#71](https://github.com/moneymikeMD/switchtender/issues/71)) ([28bbcfe](https://github.com/moneymikeMD/switchtender/commit/28bbcfeca1aeb6805da19fa04a731867a2de6b3d))
+
 ## [1.10.0](https://github.com/moneymikeMD/switchtender/compare/v1.9.0...v1.10.0) (2026-11-05)
 
 
