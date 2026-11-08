@@ -45,6 +45,11 @@ export const LOG_TIMEOUT_MS = 4_000;
 // A module's fetch is documented never to throw. If one does anyway, the
 // result is its unknown shape, not a crashed process.
 const guard = (promise, unknown) => promise.catch((cause) => ({ failure: unknown(`unexpected error (${cause?.name ?? 'Error'})`) }));
+const tripFor = (config, direction) => {
+  const board = config.route.park_and_ride?.label ?? 'the boarding station';
+  const exit = config.route.destination?.label ?? 'the destination';
+  return direction === 'outbound' ? { direction, origin: exit, destination: board } : { direction, origin: board, destination: exit };
+};
 const guardWhole = (promise, unknown) => promise.catch((cause) => unknown(`unexpected error (${cause?.name ?? 'Error'})`));
 
 /**
@@ -117,7 +122,13 @@ export async function runVerdict(
   const trackworkPromise =
     (config.signals?.trackwork ?? true) && lines.length > 0
       ? guardWhole(
-          fetchTrackwork(lines, fetchImpl, { now: nowMs, timeZone: config.route.timezone, log: (line) => console.error(line), signal: deadline() }),
+          fetchTrackwork(lines, fetchImpl, {
+            now: nowMs,
+            timeZone: config.route.timezone,
+            log: (line) => console.error(line),
+            signal: deadline(),
+            trip: tripFor(config, direction),
+          }),
           unknownTrackwork,
         )
       : Promise.resolve(null);
@@ -166,6 +177,9 @@ export async function runVerdict(
       trackwork_active: trackwork ? trackwork.active : null,
       trackwork_upcoming: trackwork ? trackwork.upcoming : null,
       trackwork_stale_windows: trackwork ? trackwork.staleWindows : null,
+      trackwork_model_p: trackwork?.model?.p ?? null,
+      trackwork_penalty_shadow: trackwork?.model?.penaltyShadow ?? null,
+      trackwork_model_error: trackwork?.model?.error ?? null,
       // CMB-29 to CMB-32. A row from home is not comparable with a row from
       // the fork, so the start point travels with it.
       measured_from: options.measuredFrom ?? 'fork',
