@@ -22,7 +22,7 @@ ROUTES_API_KEY=... npm start
   owner's night-watchman config, not in this repo. This repo conforms to the [work-order](https://github.com/moneymikeMD/work-order) ticket contract at profile `minimal` — never night-watchman, which
   this repo does not run (see below). `docs/tickets.md` has the conformance claim, the plugin dependency that backs it, and a recorded gap in what can actually be machine-checked against live CMB
   tickets today.
-- **Memory:** the global memory-graph. Recall with single nouns, one per call: `switchtender`, `commuter`, `cmb`, `tomtom`, `wmata`, `chart`, `ddot`.
+- **Memory:** lamplighter, tagged `switchtender`. Useful recall terms: `switchtender`, `commuter`, `cmb`, `tomtom`, `wmata`, `chart`, `ddot`.
 - **Resume notes:** `docs/handoffs/`, newest first. Read only the newest.
 - **Service:** Cloud Run `switchtender` in `commuter-bot-501717`, us-east4; `docs/deploy.md`.
 - **Phone:** MacroDroid macros `docs/switchtender.category`; `docs/phone.md`.
@@ -31,7 +31,7 @@ ROUTES_API_KEY=... npm start
 ## How work happens here
 
 Fast code production with tests. This repo does not run the night-watchman operating model: no session-start, wave trail, spec-reviewer or script-reviewer here (owner decision 2026-09-16). A session
-reads memory-graph and this file, dispatches one plain worktree subagent per ticket with disjoint file ownership, reviews the diff, runs `npm test` and a live `npm start`.
+reads lamplighter and this file, dispatches one plain worktree subagent per ticket with disjoint file ownership, reviews the diff, runs `npm test` and a live `npm start`.
 
 **Every change lands through a PR, merged right away, not left open** (owner decision 2026-09-18). `main` requires a pull request via a GitHub ruleset — no direct push. For the owner (repo admin,
 bypass always) this is for change visibility and a second, GitHub-native record of what shipped, not a review gate: open the PR, merge it immediately once CI is green. No approving review is required
